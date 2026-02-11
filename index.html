@@ -36,17 +36,17 @@
   <option value="wackyCorpse">Wacky Exquisite Corpse</option>
 </select>
 
-<button onclick="startProcess()">Start / Join Process</button>
-<button onclick="exportPDF()">Export PDF</button>
+<button id="startBtn">Start / Join Process</button>
+<button id="exportBtn">Export PDF</button>
 
 <div id="processSteps"></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 
-// TODO: Replace with your Firebase config
+// Replace with your Firebase config
 const firebaseConfig = {
 
   apiKey: "AIzaSyBAXjYxu0Nw59omDOk7qLQ2xzMRMRTBQ4g",
@@ -70,52 +70,18 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 
 const processes = {
-  prosCons: [
-    "List all 10 sketches.",
-    "Discuss strengths and weaknesses.",
-    "Write pros and cons.",
-    "Decide strongest sketches.",
-    "Narrow to 2–3 sketches to refine."
-  ],
-  mergeIdeas: [
-    "Review sketches, identify best elements.",
-    "Sketch combinations of strong elements.",
-    "Discuss which merged sketches are cohesive.",
-    "Refine one merged idea.",
-    "Evaluate against goals and adjust."
-  ],
-  ranking: [
-    "Establish evaluation criteria.",
-    "Rank each sketch.",
-    "Identify top 3 sketches.",
-    "Remove weaker sketches, refine remaining.",
-    "Finalize strongest sketch."
-  ],
-  peerFeedback: [
-    "Present sketches to other group.",
-    "Collect feedback on strongest sketches.",
-    "Discuss feedback and find common themes.",
-    "Choose sketch fitting feedback.",
-    "Refine into final idea."
-  ],
-  storytelling: [
-    "Imagine story for each sketch.",
-    "Evaluate clearest story.",
-    "Discuss how story supports goals.",
-    "Select strongest narrative sketch.",
-    "Refine into final idea."
-  ],
-  wackyCorpse: [
-    "Add your sketch (without seeing the full previous sketches).",
-    "Next participant can only see the last uploaded image.",
-    "Add a creative twist to the partial sketch.",
-    "Repeat until all group members have contributed.",
-    "Reveal the final combined sketch and discuss!"
-  ]
+  prosCons: ["List all 10 sketches.", "Discuss strengths and weaknesses.", "Write pros and cons.", "Decide strongest sketches.", "Narrow to 2–3 sketches to refine."],
+  mergeIdeas: ["Review sketches, identify best elements.", "Sketch combinations of strong elements.", "Discuss which merged sketches are cohesive.", "Refine one merged idea.", "Evaluate against goals and adjust."],
+  ranking: ["Establish evaluation criteria.", "Rank each sketch.", "Identify top 3 sketches.", "Remove weaker sketches, refine remaining.", "Finalize strongest sketch."],
+  peerFeedback: ["Present sketches to other group.", "Collect feedback on strongest sketches.", "Discuss feedback and find common themes.", "Choose sketch fitting feedback.", "Refine into final idea."],
+  storytelling: ["Imagine story for each sketch.", "Evaluate clearest story.", "Discuss how story supports goals.", "Select strongest narrative sketch.", "Refine into final idea."],
+  wackyCorpse: ["Add your sketch (without seeing the full previous sketches).", "Next participant can only see the last uploaded image.", "Add a creative twist to the partial sketch.", "Repeat until all group members have contributed.", "Reveal the final combined sketch and discuss!"]
 };
 
 let currentDocRef;
 let currentProcessKey;
+
+// --------------------- CORE FUNCTIONS ---------------------
 
 function startProcess() {
   const username = document.getElementById("username").value.trim();
@@ -164,6 +130,7 @@ function renderSteps(steps, processKey, editingMap={}) {
       imagesHTML = step.images.map(url => `<img src="${url}">`).join('');
     }
 
+    // Currently editing label
     let editingLabel = '';
     if (editingMap[index] && editingMap[index] !== username) {
       editingLabel = `<div class="editing-label">Editing: ${editingMap[index]}</div>`;
@@ -188,15 +155,13 @@ function renderSteps(steps, processKey, editingMap={}) {
   });
 }
 
-// Firestore updates
+// --------------------- FIRESTORE UPDATES ---------------------
 async function toggleCheck(index, checked) {
   await updateDoc(currentDocRef, { [`steps.${index}.checked`]: checked, lastUpdated: serverTimestamp() });
 }
 async function updateNote(index, note) {
   await updateDoc(currentDocRef, { [`steps.${index}.note`]: note, lastUpdated: serverTimestamp() });
 }
-
-// Editing presence
 function setEditing(stepIndex, isEditing) {
   const username = document.getElementById("username").value.trim();
   if (!username) return;
@@ -208,7 +173,7 @@ function setEditing(stepIndex, isEditing) {
   }
 }
 
-// Compress image before upload
+// --------------------- IMAGE COMPRESSION & UPLOAD ---------------------
 async function uploadCompressedImage(index, file) {
   if (!file) return;
   const img = await loadImageForCompression(file);
@@ -224,7 +189,7 @@ async function uploadCompressedImage(index, file) {
     await uploadBytes(storageRef, blob);
     const url = await getDownloadURL(storageRef);
     await updateDoc(currentDocRef, { [`steps.${index}.images`]: arrayUnion(url), lastUpdated: serverTimestamp() });
-  }, 'image/jpeg', 0.7); // Compress to JPEG quality 0.7
+  }, 'image/jpeg', 0.7);
 }
 
 function loadImageForCompression(file) {
@@ -239,39 +204,38 @@ function loadImageForCompression(file) {
   });
 }
 
-// PDF export
+// --------------------- PDF EXPORT ---------------------
 async function exportPDF() {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  const snapshot = await currentDocRef.get();
-  const data = (await snapshot).data();
+  const docPDF = new jsPDF();
+  const snapshot = await getDoc(currentDocRef);
+  const data = snapshot.data();
   let y = 20;
-  doc.setFontSize(16);
-  doc.text(data.groupName + " - " + currentProcessKey, 20, y);
+  docPDF.setFontSize(16);
+  docPDF.text(data.groupName + " - " + currentProcessKey, 20, y);
   y += 10;
 
   for (let i = 0; i < data.steps.length; i++) {
     const step = data.steps[i];
     const checked = step.checked ? "[✔] " : "[ ] ";
-    doc.setFontSize(12);
-    doc.text(checked + step.text, 20, y);
+    docPDF.setFontSize(12);
+    docPDF.text(checked + step.text, 20, y);
     y += 8;
     if (step.note) {
-      const splitNote = doc.splitTextToSize("Notes: " + step.note, 170);
-      doc.text(splitNote, 25, y);
+      const splitNote = docPDF.splitTextToSize("Notes: " + step.note, 170);
+      docPDF.text(splitNote, 25, y);
       y += splitNote.length * 8;
     }
     for (let imgUrl of step.images) {
       const img = await loadImage(imgUrl);
-      doc.addImage(img, 'PNG', 25, y, 50, 50);
+      docPDF.addImage(img, 'PNG', 25, y, 50, 50);
       y += 55;
-      if (y > 270) { doc.addPage(); y = 20; }
+      if (y > 270) { docPDF.addPage(); y = 20; }
     }
   }
-  doc.save(`${data.groupName}_${currentProcessKey}.pdf`);
+  docPDF.save(`${data.groupName}_${currentProcessKey}.pdf`);
 }
 
-// Helper: Load image as base64 for PDF
 function loadImage(url) {
   return new Promise(resolve => {
     const img = new Image();
@@ -286,6 +250,11 @@ function loadImage(url) {
     };
   });
 }
+
+// --------------------- ATTACH BUTTON LISTENERS ---------------------
+document.getElementById('startBtn').addEventListener('click', startProcess);
+document.getElementById('exportBtn').addEventListener('click', exportPDF);
+
 </script>
 
 </body>
