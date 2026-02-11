@@ -20,6 +20,7 @@
   .phrase-author { font-weight: bold; color: #2196F3; margin-right: 10px; }
   .final-concept { background: #fff3cd; padding: 20px; margin: 20px 0; border-radius: 8px; border: 2px solid #ffc107; }
   .final-concept h3 { color: #856404; margin-top: 0; }
+  #debugLog { background: #000; color: #0f0; padding: 10px; margin: 20px 0; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -46,6 +47,7 @@
 <button id="startBtn">Start / Join Process</button>
 <button id="exportBtn">Export PDF</button>
 
+<div id="debugLog"></div>
 <div id="processSteps"></div>
 
 <script type="module">
@@ -78,6 +80,14 @@ const processes = {
 let currentDocRef;
 let currentProcessKey;
 
+function log(message) {
+  const debugLog = document.getElementById('debugLog');
+  const timestamp = new Date().toLocaleTimeString();
+  debugLog.innerHTML += `[${timestamp}] ${message}<br>`;
+  debugLog.scrollTop = debugLog.scrollHeight;
+  console.log(message);
+}
+
 function startProcess() {
   const username = document.getElementById("username").value.trim();
   const groupName = document.getElementById("groupName").value.trim();
@@ -90,6 +100,7 @@ function startProcess() {
 
   const processId = groupName.replace(/\s+/g,'_');
   currentDocRef = doc(db, "processes", processId);
+  log(`Started process: ${processId}, type: ${currentProcessKey}`);
 
   const initialData = {
     groupName,
@@ -248,14 +259,17 @@ async function addPhrase() {
   });
 
   phraseInput.value = '';
+  log(`Added phrase: ${phraseText}`);
 }
 
 async function toggleCheck(index, checked) {
   await updateDoc(currentDocRef, { [`steps.${index}.checked`]: checked, lastUpdated: serverTimestamp() });
+  log(`Step ${index} checked: ${checked}`);
 }
 
 async function updateNote(index, note) {
   await updateDoc(currentDocRef, { [`steps.${index}.note`]: note, lastUpdated: serverTimestamp() });
+  log(`Step ${index} note updated (${note.length} chars)`);
 }
 
 function setEditing(stepIndex, isEditing) {
@@ -269,31 +283,33 @@ function setEditing(stepIndex, isEditing) {
   }
 }
 
-// Store images as base64 to avoid CORS issues
 async function uploadCompressedImage(index, file) {
   if (!file) return;
   
   try {
+    log(`Uploading image to step ${index}: ${file.name}`);
     const img = await loadImageForCompression(file);
     const canvas = document.createElement('canvas');
-    const maxWidth = 600; // Smaller to fit in Firestore
+    const maxWidth = 600;
     const scale = Math.min(maxWidth / img.width, 1);
     canvas.width = img.width * scale;
     canvas.height = img.height * scale;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     
-    // Convert to base64 data URL
     const base64Image = canvas.toDataURL('image/jpeg', 0.6);
+    log(`Image compressed: ${base64Image.length} bytes`);
     
-    // Store directly in Firestore as base64
     await updateDoc(currentDocRef, { 
       [`steps.${index}.images`]: arrayUnion(base64Image), 
       lastUpdated: serverTimestamp() 
     });
     
+    log(`Image uploaded successfully to step ${index}`);
+    
   } catch (error) {
     console.error("Error uploading image:", error);
+    log(`ERROR uploading image: ${error.message}`);
     alert("Error uploading image: " + error.message);
   }
 }
@@ -312,44 +328,79 @@ function loadImageForCompression(file) {
 
 async function exportPDF() {
   try {
+    log("=== EXPORT PDF STARTED ===");
+    
     if (!window.jspdf) {
       alert("ERROR: jsPDF library not loaded!");
+      log("ERROR: jsPDF not loaded");
       return;
     }
+    log("jsPDF loaded OK");
 
     const { jsPDF } = window.jspdf;
     
     if (!currentDocRef) {
-      alert("ERROR: No process started. Please click 'Start / Join Process' first.");
+      alert("ERROR: No process started.");
+      log("ERROR: No currentDocRef");
       return;
     }
+    log("currentDocRef exists: " + currentDocRef.id);
 
     const snapshot = await getDoc(currentDocRef);
     
     if (!snapshot.exists()) {
       alert("ERROR: No Firebase data found!");
+      log("ERROR: Snapshot doesn't exist");
       return;
     }
+    log("Snapshot exists");
 
     const data = snapshot.data();
+    log("Data retrieved from Firebase:");
+    log(`  Group name: ${data.groupName}`);
+    log(`  Process key: ${currentProcessKey}`);
+    log(`  Steps count: ${data.steps ? data.steps.length : 0}`);
+    
+    if (data.steps) {
+      data.steps.forEach((step, i) => {
+        log(`  Step ${i}: "${step.text}"`);
+        log(`    - checked: ${step.checked}`);
+        log(`    - note: "${step.note}" (${step.note ? step.note.length : 0} chars)`);
+        log(`    - images: ${step.images ? step.images.length : 0}`);
+      });
+    }
+
+    if (data.phrases) {
+      log(`  Phrases count: ${data.phrases.length}`);
+      data.phrases.forEach((p, i) => {
+        log(`    Phrase ${i}: ${p.author}: ${p.text}`);
+      });
+    }
+
     const pdf = new jsPDF();
     let y = 20;
     const pageHeight = 280;
     const margin = 20;
 
+    log("Creating PDF...");
+
     // Title
     pdf.setFontSize(16);
     pdf.setFont(undefined, 'bold');
-    pdf.text(`${data.groupName} - ${currentProcessKey}`, margin, y);
+    const titleText = `${data.groupName} - ${currentProcessKey}`;
+    pdf.text(titleText, margin, y);
+    log(`Added title: "${titleText}" at y=${y}`);
     y += 15;
 
     // Phrases for collectiveConcept
     if (currentProcessKey === "collectiveConcept" && data.phrases && data.phrases.length > 0) {
-      if (y + 20 > pageHeight) { pdf.addPage(); y = margin; }
+      log("Adding phrases section...");
+      if (y + 20 > pageHeight) { pdf.addPage(); y = margin; log("New page for phrases"); }
       
       pdf.setFontSize(14);
       pdf.setFont(undefined, 'bold');
       pdf.text("Group Contributions:", margin, y);
+      log(`Added "Group Contributions" header at y=${y}`);
       y += 10;
       
       pdf.setFontSize(11);
@@ -360,24 +411,28 @@ async function exportPDF() {
         const lines = pdf.splitTextToSize(text, 170);
         const lineHeight = lines.length * 6;
         
-        if (y + lineHeight > pageHeight) { pdf.addPage(); y = margin; }
+        if (y + lineHeight > pageHeight) { pdf.addPage(); y = margin; log("New page for phrase"); }
         
         pdf.text(lines, margin + 5, y);
+        log(`Added phrase at y=${y}: "${text.substring(0, 50)}..."`);
         y += lineHeight + 3;
       }
       y += 10;
     }
 
     // Steps
+    log("Adding steps...");
     for (let i = 0; i < data.steps.length; i++) {
       const step = data.steps[i];
+      log(`Processing step ${i}...`);
       
-      if (y + 15 > pageHeight) { pdf.addPage(); y = margin; }
+      if (y + 15 > pageHeight) { pdf.addPage(); y = margin; log(`New page for step ${i}`); }
       
       const checkbox = step.checked ? "[✓] " : "[ ] ";
       pdf.setFontSize(12);
       pdf.setFont(undefined, 'bold');
       pdf.text(checkbox + step.text, margin, y);
+      log(`  Added step title at y=${y}`);
       y += 10;
 
       if (step.note && step.note.trim()) {
@@ -386,23 +441,27 @@ async function exportPDF() {
         const noteLines = pdf.splitTextToSize("Notes: " + step.note, 170);
         const noteHeight = noteLines.length * 6;
         
-        if (y + noteHeight > pageHeight) { pdf.addPage(); y = margin; }
+        if (y + noteHeight > pageHeight) { pdf.addPage(); y = margin; log(`New page for step ${i} notes`); }
         
         pdf.text(noteLines, margin + 5, y);
+        log(`  Added note at y=${y} (${noteLines.length} lines)`);
         y += noteHeight + 5;
       }
 
-      // Images (now stored as base64)
       if (step.images && step.images.length > 0) {
-        for (const base64Image of step.images) {
-          if (y + 55 > pageHeight) { pdf.addPage(); y = margin; }
+        log(`  Step ${i} has ${step.images.length} images`);
+        for (let imgIdx = 0; imgIdx < step.images.length; imgIdx++) {
+          const base64Image = step.images[imgIdx];
+          if (y + 55 > pageHeight) { pdf.addPage(); y = margin; log(`New page for image ${imgIdx}`); }
           
           try {
-            // Image is already base64, just add it directly
+            log(`    Adding image ${imgIdx} at y=${y}, base64 length: ${base64Image.length}`);
             pdf.addImage(base64Image, 'JPEG', margin + 5, y, 50, 50);
+            log(`    Image ${imgIdx} added successfully`);
             y += 55;
           } catch (err) {
             console.error("Image error:", err);
+            log(`    ERROR adding image ${imgIdx}: ${err.message}`);
             pdf.setFontSize(9);
             pdf.setTextColor(255, 0, 0);
             pdf.text("[Image could not be loaded]", margin + 5, y);
@@ -415,10 +474,14 @@ async function exportPDF() {
       y += 5;
     }
 
-    pdf.save(`${data.groupName}_${currentProcessKey}.pdf`);
+    const filename = `${data.groupName}_${currentProcessKey}.pdf`;
+    log(`Saving PDF as: ${filename}`);
+    pdf.save(filename);
+    log("=== PDF EXPORT COMPLETE ===");
 
   } catch (error) {
     alert("ERROR: " + error.message);
+    log(`FATAL ERROR: ${error.message}`);
     console.error("PDF Export Error:", error);
   }
 }
