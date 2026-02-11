@@ -161,8 +161,7 @@ function renderSteps(steps, processKey, editingMap={}) {
     let typingTimeout;
     textarea.addEventListener('input', e => {
       updateNote(index, e.target.value);
-      // update "currently editing" every time user types
-      setEditing(index, true);
+      setEditing(index, true); // mark as currently editing
       clearTimeout(typingTimeout);
       typingTimeout = setTimeout(() => setEditing(index, false), 1000); // clear after 1 sec idle
     });
@@ -228,10 +227,11 @@ async function exportPDF() {
   const { jsPDF } = window.jspdf;
   const docPDF = new jsPDF();
   const snapshot = await getDoc(currentDocRef);
+  if (!snapshot.exists()) { alert("No data to export!"); return; }
   const data = snapshot.data();
   let y = 20;
   docPDF.setFontSize(16);
-  docPDF.text(data.groupName + " - " + currentProcessKey, 20, y);
+  docPDF.text(`${data.groupName} - ${currentProcessKey}`, 20, y);
   y += 10;
 
   for (let i = 0; i < data.steps.length; i++) {
@@ -240,33 +240,42 @@ async function exportPDF() {
     docPDF.setFontSize(12);
     docPDF.text(checked + step.text, 20, y);
     y += 8;
+
     if (step.note) {
       const splitNote = docPDF.splitTextToSize("Notes: " + step.note, 170);
       docPDF.text(splitNote, 25, y);
       y += splitNote.length * 8;
     }
+
     for (let imgUrl of step.images) {
-      const img = await loadImage(imgUrl);
-      docPDF.addImage(img, 'PNG', 25, y, 50, 50);
-      y += 55;
-      if (y > 270) { docPDF.addPage(); y = 20; }
+      try {
+        const imgBase64 = await loadImage(imgUrl);
+        docPDF.addImage(imgBase64, 'PNG', 25, y, 50, 50);
+        y += 55;
+        if (y > 270) { docPDF.addPage(); y = 20; }
+      } catch(e) {
+        console.error("Image failed to load:", e);
+      }
     }
   }
   docPDF.save(`${data.groupName}_${currentProcessKey}.pdf`);
 }
 
+// Convert image URL to base64 for jsPDF
 function loadImage(url) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    img.crossOrigin = 'anonymous'; // important for Firebase Storage URLs
     img.src = url;
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = img.width; canvas.height = img.height;
+      canvas.width = img.width;
+      canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
       resolve(canvas.toDataURL('image/png'));
     };
+    img.onerror = () => reject(new Error('Failed to load image: ' + url));
   });
 }
 
