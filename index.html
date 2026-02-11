@@ -14,6 +14,12 @@
   .step textarea { width: 100%; margin-top: 5px; }
   .step img { max-width: 200px; display: block; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; }
   .editing-label { color: red; font-weight: bold; margin-top: 5px; }
+  .phrase-input { width: 100%; padding: 10px; margin: 10px 0; font-size: 1rem; border: 2px solid #4CAF50; border-radius: 5px; }
+  .phrase-list { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; }
+  .phrase-item { padding: 8px; margin: 5px 0; background: white; border-left: 3px solid #2196F3; border-radius: 3px; }
+  .phrase-author { font-weight: bold; color: #2196F3; margin-right: 10px; }
+  .final-concept { background: #fff3cd; padding: 20px; margin: 20px 0; border-radius: 8px; border: 2px solid #ffc107; }
+  .final-concept h3 { color: #856404; margin-top: 0; }
 </style>
 </head>
 <body>
@@ -34,6 +40,7 @@
   <option value="peerFeedback">Peer Review & Feedback</option>
   <option value="storytelling">Storytelling & Perspective</option>
   <option value="wackyCorpse">Wacky Exquisite Corpse</option>
+  <option value="collectiveConcept">Collective Concept Builder</option>
 </select>
 
 <button id="startBtn">Start / Join Process</button>
@@ -46,7 +53,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 
-// Replace with your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyBAXjYxu0Nw59omDOk7qLQ2xzMRMRTBQ4g",
   authDomain: "art104-brainstorm.firebaseapp.com",
@@ -67,13 +73,13 @@ const processes = {
   ranking: ["Establish evaluation criteria.", "Rank each sketch.", "Identify top 3 sketches.", "Remove weaker sketches, refine remaining.", "Finalize strongest sketch."],
   peerFeedback: ["Present sketches to other group.", "Collect feedback on strongest sketches.", "Discuss feedback and find common themes.", "Choose sketch fitting feedback.", "Refine into final idea."],
   storytelling: ["Imagine story for each sketch.", "Evaluate clearest story.", "Discuss how story supports goals.", "Select strongest narrative sketch.", "Refine into final idea."],
-  wackyCorpse: ["Add your sketch (without seeing the full previous sketches).", "Next participant can only see the last uploaded image.", "Add a creative twist to the partial sketch.", "Repeat until all group members have contributed.", "Reveal the final combined sketch and discuss!"]
+  wackyCorpse: ["Add your sketch (without seeing the full previous sketches).", "Next participant can only see the last uploaded image.", "Add a creative twist to the partial sketch.", "Repeat until all group members have contributed.", "Reveal the final combined sketch and discuss!"],
+  collectiveConcept: ["Each member contributes a phrase, sentence, or theme.", "Review all contributions.", "Discuss how phrases connect or contrast.", "Synthesize into a unified concept.", "Refine the final collective concept."]
 };
 
 let currentDocRef;
 let currentProcessKey;
 
-// --------------------- CORE FUNCTIONS ---------------------
 function startProcess() {
   const username = document.getElementById("username").value.trim();
   const groupName = document.getElementById("groupName").value.trim();
@@ -87,28 +93,30 @@ function startProcess() {
   const processId = groupName.replace(/\s+/g,'_');
   currentDocRef = doc(db, "processes", processId);
 
-  // Initialize Firestore document
-  setDoc(currentDocRef, {
+  const initialData = {
     groupName,
     steps: processes[currentProcessKey].map(text => ({text, checked:false, note:"", images:[] })),
     editing: {},
     lastUpdated: serverTimestamp()
-  }, {merge:true});
+  };
 
-  // Listen for changes in real-time
+  if (currentProcessKey === "collectiveConcept") {
+    initialData.phrases = [];
+  }
+
+  setDoc(currentDocRef, initialData, {merge:true});
+
   onSnapshot(currentDocRef, (docSnap) => {
     if (docSnap.exists()) {
       const data = docSnap.data();
-      renderSteps(data.steps, currentProcessKey, data.editing || {});
+      renderSteps(data.steps, currentProcessKey, data.editing || {}, data.phrases || []);
     }
   });
 }
 
-// --------------------- RENDER STEPS WITH LIVE EDITING ---------------------
-function renderSteps(steps, processKey, editingMap={}) {
+function renderSteps(steps, processKey, editingMap={}, phrases=[]) {
   const stepsDiv = document.getElementById("processSteps");
 
-  // Preserve text in notes to prevent disappearing while typing
   const currentNotes = {};
   steps.forEach((step, index) => {
     const ta = document.getElementById(`note${index}`);
@@ -117,6 +125,65 @@ function renderSteps(steps, processKey, editingMap={}) {
 
   stepsDiv.innerHTML = '';
   const username = document.getElementById("username").value.trim();
+
+  if (processKey === "collectiveConcept") {
+    const phraseDiv = document.createElement('div');
+    phraseDiv.className = 'step';
+    
+    const userHasContributed = phrases.some(p => p.author === username);
+    
+    phraseDiv.innerHTML = `
+      <h3>💡 Contribute Your Phrase/Theme</h3>
+      <input type="text" id="phraseInput" class="phrase-input" placeholder="Enter your phrase, sentence, or theme..." ${userHasContributed ? 'disabled' : ''}>
+      <button id="addPhraseBtn" ${userHasContributed ? 'disabled' : ''}>Add My Contribution</button>
+      ${userHasContributed ? '<p style="color: green;">✓ You have already contributed!</p>' : ''}
+    `;
+    stepsDiv.appendChild(phraseDiv);
+
+    if (phrases.length > 0) {
+      const phraseListDiv = document.createElement('div');
+      phraseListDiv.className = 'phrase-list';
+      phraseListDiv.innerHTML = '<h3>📝 Group Contributions:</h3>';
+      
+      phrases.forEach(phrase => {
+        const phraseItem = document.createElement('div');
+        phraseItem.className = 'phrase-item';
+        phraseItem.innerHTML = `<span class="phrase-author">${phrase.author}:</span> ${phrase.text}`;
+        phraseListDiv.appendChild(phraseItem);
+      });
+      
+      stepsDiv.appendChild(phraseListDiv);
+    }
+
+    if (!userHasContributed) {
+      setTimeout(() => {
+        const addBtn = document.getElementById('addPhraseBtn');
+        if (addBtn) {
+          addBtn.addEventListener('click', addPhrase);
+        }
+      }, 0);
+    }
+
+    if (steps[3] && steps[3].checked && phrases.length > 0) {
+      const conceptDiv = document.createElement('div');
+      conceptDiv.className = 'final-concept';
+      conceptDiv.innerHTML = `
+        <h3>🎨 Synthesized Concept</h3>
+        <p><strong>Combined themes:</strong> ${phrases.map(p => p.text).join(' • ')}</p>
+        <textarea id="finalConceptText" class="phrase-input" placeholder="Write the unified concept that emerges from all contributions...">${steps[3].note}</textarea>
+      `;
+      stepsDiv.appendChild(conceptDiv);
+
+      setTimeout(() => {
+        const conceptTextarea = document.getElementById('finalConceptText');
+        if (conceptTextarea) {
+          conceptTextarea.addEventListener('input', (e) => {
+            updateNote(3, e.target.value);
+          });
+        }
+      }, 0);
+    }
+  }
 
   steps.forEach((step, index) => {
     const div = document.createElement('div');
@@ -162,7 +229,29 @@ function renderSteps(steps, processKey, editingMap={}) {
   });
 }
 
-// --------------------- FIRESTORE UPDATES ---------------------
+async function addPhrase() {
+  const username = document.getElementById("username").value.trim();
+  const phraseInput = document.getElementById("phraseInput");
+  const phraseText = phraseInput.value.trim();
+
+  if (!phraseText) {
+    alert("Please enter a phrase or theme!");
+    return;
+  }
+
+  if (!username) {
+    alert("Please enter your name first!");
+    return;
+  }
+
+  await updateDoc(currentDocRef, {
+    phrases: arrayUnion({ author: username, text: phraseText, timestamp: new Date().toISOString() }),
+    lastUpdated: serverTimestamp()
+  });
+
+  phraseInput.value = '';
+}
+
 async function toggleCheck(index, checked) {
   await updateDoc(currentDocRef, { [`steps.${index}.checked`]: checked, lastUpdated: serverTimestamp() });
 }
@@ -182,7 +271,6 @@ function setEditing(stepIndex, isEditing) {
   }
 }
 
-// --------------------- IMAGE COMPRESSION & UPLOAD ---------------------
 async function uploadCompressedImage(index, file) {
   if (!file) return;
   const img = await loadImageForCompression(file);
@@ -213,72 +301,114 @@ function loadImageForCompression(file) {
   });
 }
 
-// --------------------- PDF EXPORT ---------------------
 async function exportPDF() {
-  const { jsPDF } = window.jspdf;
-  const docPDF = new jsPDF();
-
-  if (!currentDocRef) { alert("Please start or join a process first."); return; }
-  const snapshot = await getDoc(currentDocRef);
-  if (!snapshot.exists()) { alert("No data to export!"); return; }
-
-  const data = snapshot.data();
-  let y = 20;
-  docPDF.setFontSize(16);
-  docPDF.text(`${data.groupName} - ${currentProcessKey || ""}`, 20, y);
-  y += 10;
-
-  for (let i = 0; i < data.steps.length; i++) {
-    const step = data.steps[i];
-    const checked = step.checked ? "[✔] " : "[ ] ";
-    docPDF.setFontSize(12);
-    
-    // Check if we need a new page for the step title
-    if (y > 270) { docPDF.addPage(); y = 20; }
-    
-    docPDF.text(checked + step.text, 20, y);
-    y += 8;
-
-    if (step.note) {
-      const splitNote = docPDF.splitTextToSize("Notes: " + step.note, 170);
-      
-      // Check if notes will fit on page
-      if (y + (splitNote.length * 8) > 280) { docPDF.addPage(); y = 20; }
-      
-      docPDF.text(splitNote, 25, y);
-      y += splitNote.length * 8;
+  try {
+    if (!window.jspdf) {
+      alert("ERROR: jsPDF library not loaded!");
+      return;
     }
 
-    // Process images sequentially with await
-    for (let imgUrl of step.images) {
-      try {
-        // Check if image will fit on page BEFORE loading it
-        if (y + 55 > 280) { docPDF.addPage(); y = 20; }
-        
-        const blob = await fetch(imgUrl).then(r => r.blob());
-        const imgBase64 = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
-        
-        docPDF.addImage(imgBase64, 'JPEG', 25, y, 50, 50);
-        y += 55;
-        
-      } catch(e) {
-        console.error("Image failed to load:", e);
+    const { jsPDF } = window.jspdf;
+    
+    if (!currentDocRef) {
+      alert("ERROR: No process started. Please click 'Start / Join Process' first.");
+      return;
+    }
+
+    const snapshot = await getDoc(currentDocRef);
+    
+    if (!snapshot.exists()) {
+      alert("ERROR: No Firebase data found!");
+      return;
+    }
+
+    const data = snapshot.data();
+
+    const pdf = new jsPDF();
+    let y = 20;
+
+    // Title
+    pdf.setFontSize(16);
+    pdf.text(`${data.groupName} - ${currentProcessKey}`, 20, y);
+    y += 15;
+
+    // Phrases for collectiveConcept
+    if (currentProcessKey === "collectiveConcept" && data.phrases && data.phrases.length > 0) {
+      pdf.setFontSize(14);
+      pdf.text("Group Contributions:", 20, y);
+      y += 10;
+      pdf.setFontSize(11);
+      
+      data.phrases.forEach(phrase => {
+        const text = `${phrase.author}: ${phrase.text}`;
+        const lines = pdf.splitTextToSize(text, 170);
+        pdf.text(lines, 25, y);
+        y += lines.length * 6 + 2;
+        if (y > 270) { pdf.addPage(); y = 20; }
+      });
+      y += 10;
+    }
+
+    // Steps
+    for (let i = 0; i < data.steps.length; i++) {
+      const step = data.steps[i];
+      
+      if (y > 270) { pdf.addPage(); y = 20; }
+      
+      const checkbox = step.checked ? "[✓] " : "[ ] ";
+      pdf.setFontSize(12);
+      pdf.text(checkbox + step.text, 20, y);
+      y += 10;
+
+      if (step.note && step.note.trim()) {
+        pdf.setFontSize(10);
+        const noteLines = pdf.splitTextToSize("Notes: " + step.note, 170);
+        if (y + noteLines.length * 6 > 280) { pdf.addPage(); y = 20; }
+        pdf.text(noteLines, 25, y);
+        y += noteLines.length * 6 + 3;
+      }
+
+      if (step.images && step.images.length > 0) {
+        for (const imgUrl of step.images) {
+          try {
+            if (y + 55 > 280) { pdf.addPage(); y = 20; }
+            
+            // Use CORS proxy to fetch the image
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imgUrl)}`;
+            const response = await fetch(proxyUrl);
+            const blob = await response.blob();
+            const base64 = await new Promise(resolve => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+            
+            pdf.addImage(base64, 'JPEG', 25, y, 50, 50);
+            y += 55;
+          } catch (err) {
+            console.error("Image error:", err);
+            pdf.setFontSize(9);
+            pdf.setTextColor(255, 0, 0);
+            pdf.text("[Image could not be loaded]", 25, y);
+            pdf.setTextColor(0, 0, 0);
+            y += 10;
+          }
+        }
       }
     }
-  }
 
-  docPDF.save(`${data.groupName}_${currentProcessKey || "process"}.pdf`);
+    pdf.save(`${data.groupName}_${currentProcessKey}.pdf`);
+    alert("PDF saved successfully!");
+
+  } catch (error) {
+    alert("ERROR: " + error.message);
+    console.error("PDF Export Error:", error);
+  }
 }
 
-// --------------------- MAKE FUNCTIONS GLOBAL ---------------------
 window.toggleCheck = toggleCheck;
 window.uploadCompressedImage = uploadCompressedImage;
 
-// --------------------- BUTTON LISTENERS ---------------------
 document.getElementById('startBtn').addEventListener('click', startProcess);
 document.getElementById('exportBtn').addEventListener('click', exportPDF);
 
