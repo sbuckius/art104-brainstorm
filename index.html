@@ -51,7 +51,6 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
 import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBAXjYxu0Nw59omDOk7qLQ2xzMRMRTBQ4g",
@@ -65,7 +64,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 const processes = {
   prosCons: ["List all 10 sketches.", "Discuss strengths and weaknesses.", "Write pros and cons.", "Decide strongest sketches.", "Narrow to 2–3 sketches to refine."],
@@ -271,22 +269,33 @@ function setEditing(stepIndex, isEditing) {
   }
 }
 
+// Store images as base64 to avoid CORS issues
 async function uploadCompressedImage(index, file) {
   if (!file) return;
-  const img = await loadImageForCompression(file);
-  const canvas = document.createElement('canvas');
-  const maxWidth = 800; 
-  const scale = Math.min(maxWidth / img.width, 1);
-  canvas.width = img.width * scale;
-  canvas.height = img.height * scale;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  canvas.toBlob(async (blob) => {
-    const storageRef = ref(storage, `processImages/${currentDocRef.id}/${index}/${file.name}`);
-    await uploadBytes(storageRef, blob);
-    const url = await getDownloadURL(storageRef);
-    await updateDoc(currentDocRef, { [`steps.${index}.images`]: arrayUnion(url), lastUpdated: serverTimestamp() });
-  }, 'image/jpeg', 0.7);
+  
+  try {
+    const img = await loadImageForCompression(file);
+    const canvas = document.createElement('canvas');
+    const maxWidth = 600; // Smaller to fit in Firestore
+    const scale = Math.min(maxWidth / img.width, 1);
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    
+    // Convert to base64 data URL
+    const base64Image = canvas.toDataURL('image/jpeg', 0.6);
+    
+    // Store directly in Firestore as base64
+    await updateDoc(currentDocRef, { 
+      [`steps.${index}.images`]: arrayUnion(base64Image), 
+      lastUpdated: serverTimestamp() 
+    });
+    
+  } catch (error) {
+    console.error("Error uploading image:", error);
+    alert("Error uploading image: " + error.message);
+  }
 }
 
 function loadImageForCompression(file) {
@@ -323,29 +332,39 @@ async function exportPDF() {
     }
 
     const data = snapshot.data();
-
     const pdf = new jsPDF();
     let y = 20;
+    const pageHeight = 280;
+    const margin = 20;
 
     // Title
     pdf.setFontSize(16);
-    pdf.text(`${data.groupName} - ${currentProcessKey}`, 20, y);
+    pdf.setFont(undefined, 'bold');
+    pdf.text(`${data.groupName} - ${currentProcessKey}`, margin, y);
     y += 15;
 
     // Phrases for collectiveConcept
     if (currentProcessKey === "collectiveConcept" && data.phrases && data.phrases.length > 0) {
-      pdf.setFontSize(14);
-      pdf.text("Group Contributions:", 20, y);
-      y += 10;
-      pdf.setFontSize(11);
+      if (y + 20 > pageHeight) { pdf.addPage(); y = margin; }
       
-      data.phrases.forEach(phrase => {
+      pdf.setFontSize(14);
+      pdf.setFont(undefined, 'bold');
+      pdf.text("Group Contributions:", margin, y);
+      y += 10;
+      
+      pdf.setFontSize(11);
+      pdf.setFont(undefined, 'normal');
+      
+      for (const phrase of data.phrases) {
         const text = `${phrase.author}: ${phrase.text}`;
         const lines = pdf.splitTextToSize(text, 170);
-        pdf.text(lines, 25, y);
-        y += lines.length * 6 + 2;
-        if (y > 270) { pdf.addPage(); y = 20; }
-      });
+        const lineHeight = lines.length * 6;
+        
+        if (y + lineHeight > pageHeight) { pdf.addPage(); y = margin; }
+        
+        pdf.text(lines, margin + 5, y);
+        y += lineHeight + 3;
+      }
       y += 10;
     }
 
@@ -353,52 +372,50 @@ async function exportPDF() {
     for (let i = 0; i < data.steps.length; i++) {
       const step = data.steps[i];
       
-      if (y > 270) { pdf.addPage(); y = 20; }
+      if (y + 15 > pageHeight) { pdf.addPage(); y = margin; }
       
       const checkbox = step.checked ? "[✓] " : "[ ] ";
       pdf.setFontSize(12);
-      pdf.text(checkbox + step.text, 20, y);
+      pdf.setFont(undefined, 'bold');
+      pdf.text(checkbox + step.text, margin, y);
       y += 10;
 
       if (step.note && step.note.trim()) {
         pdf.setFontSize(10);
+        pdf.setFont(undefined, 'normal');
         const noteLines = pdf.splitTextToSize("Notes: " + step.note, 170);
-        if (y + noteLines.length * 6 > 280) { pdf.addPage(); y = 20; }
-        pdf.text(noteLines, 25, y);
-        y += noteLines.length * 6 + 3;
+        const noteHeight = noteLines.length * 6;
+        
+        if (y + noteHeight > pageHeight) { pdf.addPage(); y = margin; }
+        
+        pdf.text(noteLines, margin + 5, y);
+        y += noteHeight + 5;
       }
 
+      // Images (now stored as base64)
       if (step.images && step.images.length > 0) {
-        for (const imgUrl of step.images) {
+        for (const base64Image of step.images) {
+          if (y + 55 > pageHeight) { pdf.addPage(); y = margin; }
+          
           try {
-            if (y + 55 > 280) { pdf.addPage(); y = 20; }
-            
-            // Use CORS proxy to fetch the image
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imgUrl)}`;
-            const response = await fetch(proxyUrl);
-            const blob = await response.blob();
-            const base64 = await new Promise(resolve => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
-              reader.readAsDataURL(blob);
-            });
-            
-            pdf.addImage(base64, 'JPEG', 25, y, 50, 50);
+            // Image is already base64, just add it directly
+            pdf.addImage(base64Image, 'JPEG', margin + 5, y, 50, 50);
             y += 55;
           } catch (err) {
             console.error("Image error:", err);
             pdf.setFontSize(9);
             pdf.setTextColor(255, 0, 0);
-            pdf.text("[Image could not be loaded]", 25, y);
+            pdf.text("[Image could not be loaded]", margin + 5, y);
             pdf.setTextColor(0, 0, 0);
             y += 10;
           }
         }
       }
+      
+      y += 5;
     }
 
     pdf.save(`${data.groupName}_${currentProcessKey}.pdf`);
-    alert("PDF saved successfully!");
 
   } catch (error) {
     alert("ERROR: " + error.message);
