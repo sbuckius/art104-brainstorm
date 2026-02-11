@@ -48,21 +48,13 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstati
 
 // Replace with your Firebase config
 const firebaseConfig = {
-
   apiKey: "AIzaSyBAXjYxu0Nw59omDOk7qLQ2xzMRMRTBQ4g",
-
   authDomain: "art104-brainstorm.firebaseapp.com",
-
   projectId: "art104-brainstorm",
-
   storageBucket: "art104-brainstorm.firebasestorage.app",
-
   messagingSenderId: "333611557857",
-
   appId: "1:333611557857:web:610e1926f3886aaeb5a8a0",
-
   measurementId: "G-X3C9CHJ1BS"
-
 };
 
 const app = initializeApp(firebaseConfig);
@@ -149,7 +141,7 @@ function renderSteps(steps, processKey, editingMap={}) {
         ${step.text}
       </label>
       ${editingLabel}
-      <textarea id="note${index}" placeholder="Add notes...">${currentNotes[index] || step.note}</textarea>
+      <textarea id="note${index}" placeholder="Add notes...">${currentNotes[index] !== undefined ? currentNotes[index] : step.note}</textarea>
       <input type="file" id="file${index}" accept="image/*" onchange="uploadCompressedImage(${index}, this.files[0])">
       <div id="images${index}">${imagesHTML}</div>
     `;
@@ -240,26 +232,39 @@ async function exportPDF() {
     const step = data.steps[i];
     const checked = step.checked ? "[✔] " : "[ ] ";
     docPDF.setFontSize(12);
+    
+    // Check if we need a new page for the step title
+    if (y > 270) { docPDF.addPage(); y = 20; }
+    
     docPDF.text(checked + step.text, 20, y);
     y += 8;
 
     if (step.note) {
       const splitNote = docPDF.splitTextToSize("Notes: " + step.note, 170);
+      
+      // Check if notes will fit on page
+      if (y + (splitNote.length * 8) > 280) { docPDF.addPage(); y = 20; }
+      
       docPDF.text(splitNote, 25, y);
       y += splitNote.length * 8;
     }
 
+    // Process images sequentially with await
     for (let imgUrl of step.images) {
       try {
+        // Check if image will fit on page BEFORE loading it
+        if (y + 55 > 280) { docPDF.addPage(); y = 20; }
+        
         const blob = await fetch(imgUrl).then(r => r.blob());
         const imgBase64 = await new Promise(resolve => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result);
           reader.readAsDataURL(blob);
         });
-        docPDF.addImage(imgBase64, 'PNG', 25, y, 50, 50);
+        
+        docPDF.addImage(imgBase64, 'JPEG', 25, y, 50, 50);
         y += 55;
-        if (y > 270) { docPDF.addPage(); y = 20; }
+        
       } catch(e) {
         console.error("Image failed to load:", e);
       }
@@ -268,6 +273,10 @@ async function exportPDF() {
 
   docPDF.save(`${data.groupName}_${currentProcessKey || "process"}.pdf`);
 }
+
+// --------------------- MAKE FUNCTIONS GLOBAL ---------------------
+window.toggleCheck = toggleCheck;
+window.uploadCompressedImage = uploadCompressedImage;
 
 // --------------------- BUTTON LISTENERS ---------------------
 document.getElementById('startBtn').addEventListener('click', startProcess);
