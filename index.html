@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch to Final Idea Process</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
+    max-width: 800px;
+    margin: auto;
+  }
+  h1, h2 {
+    color: #333;
+  }
+  select, button {
+    font-size: 1rem;
+    padding: 8px;
+    margin: 10px 0;
+  }
+  .step {
+    background: #fff;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 8px;
+    border-left: 6px solid #4CAF50;
+  }
+</style>
+</head>
+<body>
+
+<h1>From Sketches to Final Idea</h1>
+<p>Select a process method below to guide your group from multiple sketches to a final idea:</p>
+
+<select id="processSelect">
+  <option value="">-- Choose a process --</option>
+  <option value="prosCons">Pros and Cons Analysis</option>
+  <option value="mergeIdeas">Merge & Combine Ideas</option>
+  <option value="ranking">Ranking & Elimination</option>
+  <option value="peerFeedback">Peer Review & Feedback</option>
+  <option value="storytelling">Storytelling & Perspective</option>
+</select>
+<button onclick="startProcess()">Start Process</button>
+
+<div id="processSteps"></div>
+
+<script>
+const processes = {
+  prosCons: [
+    "Step 1: List all 10 sketches in front of you.",
+    "Step 2: Discuss the strengths and weaknesses of each sketch.",
+    "Step 3: Write down pros and cons for every sketch.",
+    "Step 4: Decide which sketches have the strongest overall potential.",
+    "Step 5: Narrow down to 2–3 sketches to refine further."
+  ],
+  mergeIdeas: [
+    "Step 1: Review all sketches and identify the best elements of each.",
+    "Step 2: Sketch combinations or mash-ups of these strong elements.",
+    "Step 3: Discuss as a group which merged sketches feel most cohesive.",
+    "Step 4: Refine one merged idea into a stronger final sketch.",
+    "Step 5: Evaluate it against the original goals and make adjustments."
+  ],
+  ranking: [
+    "Step 1: Look at all sketches and establish evaluation criteria (clarity, creativity, feasibility).",
+    "Step 2: Rank each sketch according to each criterion.",
+    "Step 3: Identify the top 3 sketches based on combined scores.",
+    "Step 4: Remove the weaker sketches and refine the remaining one.",
+    "Step 5: Finalize the strongest sketch into the final idea."
+  ],
+  peerFeedback: [
+    "Step 1: Present all sketches to another group or classmate.",
+    "Step 2: Collect feedback on which sketches are strongest and why.",
+    "Step 3: Discuss the feedback as a group and identify common themes.",
+    "Step 4: Choose a sketch that fits the feedback best.",
+    "Step 5: Refine it into the final idea."
+  ],
+  storytelling: [
+    "Step 1: Take each sketch and imagine a story or scenario for it.",
+    "Step 2: Evaluate which sketch tells the clearest or most compelling story.",
+    "Step 3: Discuss how each story supports the project goals.",
+    "Step 4: Select the sketch with the strongest narrative potential.",
+    "Step 5: Refine and enhance it into your final idea."
+  ]
+};
+
+function startProcess() {
+  const selected = document.getElementById('processSelect').value;
+  const stepsDiv = document.getElementById('processSteps');
+  stepsDiv.innerHTML = '';
+
+  if (!selected) {
+    alert("Please select a process method first.");
+    return;
+  }
+
+  processes[selected].forEach((step, index) => {
+    const div = document.createElement('div');
+    div.className = 'step';
+    div.innerHTML = `<strong>Step ${index + 1}:</strong> ${step}`;
+    stepsDiv.appendChild(div);
+  });
+
+  window.scrollTo({ top: stepsDiv.offsetTop, behavior: 'smooth' });
+}
+</script>
+
+</body>
+</html>
