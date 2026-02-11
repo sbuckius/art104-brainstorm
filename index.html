@@ -3,36 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sketch to Final Idea Process</title>
+<title>Collaborative Sketch Process</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f5f5f5;
-    padding: 20px;
-    max-width: 800px;
-    margin: auto;
-  }
-  h1, h2 {
-    color: #333;
-  }
-  select, button {
-    font-size: 1rem;
-    padding: 8px;
-    margin: 10px 0;
-  }
-  .step {
-    background: #fff;
-    padding: 15px;
-    margin: 10px 0;
-    border-radius: 8px;
-    border-left: 6px solid #4CAF50;
-  }
+  body { font-family: Arial; max-width: 900px; margin: auto; padding: 20px; background: #f5f5f5; }
+  h1, h2 { color: #333; }
+  select, button, textarea, input[type=file], input[type=text] { font-size: 1rem; padding: 8px; margin: 5px 0; }
+  .step { background: #fff; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 6px solid #4CAF50; }
+  .step input[type="checkbox"] { margin-right: 10px; }
+  .step textarea { width: 100%; margin-top: 5px; }
+  .step img { max-width: 200px; display: block; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; }
+  .editing-label { color: red; font-weight: bold; margin-top: 5px; }
 </style>
 </head>
 <body>
 
-<h1>From Sketches to Final Idea</h1>
-<p>Select a process method below to guide your group from multiple sketches to a final idea:</p>
+<h1>Collaborative Sketch to Final Idea</h1>
+
+<p>Enter your name for collaboration:</p>
+<input type="text" id="username" placeholder="Your Name">
+
+<p>Enter a group name (used for shared collaboration):</p>
+<input type="text" id="groupName" placeholder="Group Name">
 
 <select id="processSelect">
   <option value="">-- Choose a process --</option>
@@ -41,68 +33,258 @@
   <option value="ranking">Ranking & Elimination</option>
   <option value="peerFeedback">Peer Review & Feedback</option>
   <option value="storytelling">Storytelling & Perspective</option>
+  <option value="wackyCorpse">Wacky Exquisite Corpse</option>
 </select>
-<button onclick="startProcess()">Start Process</button>
+
+<button onclick="startProcess()">Start / Join Process</button>
+<button onclick="exportPDF()">Export PDF</button>
 
 <div id="processSteps"></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js";
+
+// TODO: Replace with your Firebase config
+const firebaseConfig = {
+
+  apiKey: "AIzaSyBAXjYxu0Nw59omDOk7qLQ2xzMRMRTBQ4g",
+
+  authDomain: "art104-brainstorm.firebaseapp.com",
+
+  projectId: "art104-brainstorm",
+
+  storageBucket: "art104-brainstorm.firebasestorage.app",
+
+  messagingSenderId: "333611557857",
+
+  appId: "1:333611557857:web:610e1926f3886aaeb5a8a0",
+
+  measurementId: "G-X3C9CHJ1BS"
+
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
 const processes = {
   prosCons: [
-    "Step 1: List all 10 sketches in front of you.",
-    "Step 2: Discuss the strengths and weaknesses of each sketch.",
-    "Step 3: Write down pros and cons for every sketch.",
-    "Step 4: Decide which sketches have the strongest overall potential.",
-    "Step 5: Narrow down to 2–3 sketches to refine further."
+    "List all 10 sketches.",
+    "Discuss strengths and weaknesses.",
+    "Write pros and cons.",
+    "Decide strongest sketches.",
+    "Narrow to 2–3 sketches to refine."
   ],
   mergeIdeas: [
-    "Step 1: Review all sketches and identify the best elements of each.",
-    "Step 2: Sketch combinations or mash-ups of these strong elements.",
-    "Step 3: Discuss as a group which merged sketches feel most cohesive.",
-    "Step 4: Refine one merged idea into a stronger final sketch.",
-    "Step 5: Evaluate it against the original goals and make adjustments."
+    "Review sketches, identify best elements.",
+    "Sketch combinations of strong elements.",
+    "Discuss which merged sketches are cohesive.",
+    "Refine one merged idea.",
+    "Evaluate against goals and adjust."
   ],
   ranking: [
-    "Step 1: Look at all sketches and establish evaluation criteria (clarity, creativity, feasibility).",
-    "Step 2: Rank each sketch according to each criterion.",
-    "Step 3: Identify the top 3 sketches based on combined scores.",
-    "Step 4: Remove the weaker sketches and refine the remaining one.",
-    "Step 5: Finalize the strongest sketch into the final idea."
+    "Establish evaluation criteria.",
+    "Rank each sketch.",
+    "Identify top 3 sketches.",
+    "Remove weaker sketches, refine remaining.",
+    "Finalize strongest sketch."
   ],
   peerFeedback: [
-    "Step 1: Present all sketches to another group or classmate.",
-    "Step 2: Collect feedback on which sketches are strongest and why.",
-    "Step 3: Discuss the feedback as a group and identify common themes.",
-    "Step 4: Choose a sketch that fits the feedback best.",
-    "Step 5: Refine it into the final idea."
+    "Present sketches to other group.",
+    "Collect feedback on strongest sketches.",
+    "Discuss feedback and find common themes.",
+    "Choose sketch fitting feedback.",
+    "Refine into final idea."
   ],
   storytelling: [
-    "Step 1: Take each sketch and imagine a story or scenario for it.",
-    "Step 2: Evaluate which sketch tells the clearest or most compelling story.",
-    "Step 3: Discuss how each story supports the project goals.",
-    "Step 4: Select the sketch with the strongest narrative potential.",
-    "Step 5: Refine and enhance it into your final idea."
+    "Imagine story for each sketch.",
+    "Evaluate clearest story.",
+    "Discuss how story supports goals.",
+    "Select strongest narrative sketch.",
+    "Refine into final idea."
+  ],
+  wackyCorpse: [
+    "Add your sketch (without seeing the full previous sketches).",
+    "Next participant can only see the last uploaded image.",
+    "Add a creative twist to the partial sketch.",
+    "Repeat until all group members have contributed.",
+    "Reveal the final combined sketch and discuss!"
   ]
 };
 
-function startProcess() {
-  const selected = document.getElementById('processSelect').value;
-  const stepsDiv = document.getElementById('processSteps');
-  stepsDiv.innerHTML = '';
+let currentDocRef;
+let currentProcessKey;
 
-  if (!selected) {
-    alert("Please select a process method first.");
+function startProcess() {
+  const username = document.getElementById("username").value.trim();
+  const groupName = document.getElementById("groupName").value.trim();
+  currentProcessKey = document.getElementById("processSelect").value;
+
+  if (!username || !groupName || !currentProcessKey) {
+    alert("Enter your name, group name, and select a process.");
     return;
   }
 
-  processes[selected].forEach((step, index) => {
+  const processId = groupName.replace(/\s+/g,'_');
+  currentDocRef = doc(db, "processes", processId);
+
+  // Initialize Firestore document
+  setDoc(currentDocRef, {
+    groupName,
+    steps: processes[currentProcessKey].map(text => ({text, checked:false, note:"", images:[] })),
+    editing: {},
+    lastUpdated: serverTimestamp()
+  }, {merge:true});
+
+  // Listen for changes in real-time
+  onSnapshot(currentDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      renderSteps(data.steps, currentProcessKey, data.editing || {});
+    }
+  });
+}
+
+function renderSteps(steps, processKey, editingMap={}) {
+  const stepsDiv = document.getElementById("processSteps");
+  stepsDiv.innerHTML = '';
+  const username = document.getElementById("username").value.trim();
+  
+  steps.forEach((step, index) => {
     const div = document.createElement('div');
     div.className = 'step';
-    div.innerHTML = `<strong>Step ${index + 1}:</strong> ${step}`;
-    stepsDiv.appendChild(div);
-  });
 
-  window.scrollTo({ top: stepsDiv.offsetTop, behavior: 'smooth' });
+    let imagesHTML = '';
+    if (processKey === "wackyCorpse" && step.images.length) {
+      const lastImage = step.images[step.images.length - 1];
+      imagesHTML = `<img src="${lastImage}">`;
+    } else {
+      imagesHTML = step.images.map(url => `<img src="${url}">`).join('');
+    }
+
+    let editingLabel = '';
+    if (editingMap[index] && editingMap[index] !== username) {
+      editingLabel = `<div class="editing-label">Editing: ${editingMap[index]}</div>`;
+    }
+
+    div.innerHTML = `
+      <label>
+        <input type="checkbox" id="check${index}" ${step.checked ? 'checked':''} onchange="toggleCheck(${index}, this.checked)">
+        ${step.text}
+      </label>
+      ${editingLabel}
+      <textarea id="note${index}" placeholder="Add notes...">${step.note}</textarea>
+      <input type="file" id="file${index}" accept="image/*" onchange="uploadCompressedImage(${index}, this.files[0])">
+      <div id="images${index}">${imagesHTML}</div>
+    `;
+    stepsDiv.appendChild(div);
+
+    const textarea = document.getElementById(`note${index}`);
+    textarea.addEventListener('input', e => updateNote(index, e.target.value));
+    textarea.addEventListener('focus', () => setEditing(index, true));
+    textarea.addEventListener('blur', () => setEditing(index, false));
+  });
+}
+
+// Firestore updates
+async function toggleCheck(index, checked) {
+  await updateDoc(currentDocRef, { [`steps.${index}.checked`]: checked, lastUpdated: serverTimestamp() });
+}
+async function updateNote(index, note) {
+  await updateDoc(currentDocRef, { [`steps.${index}.note`]: note, lastUpdated: serverTimestamp() });
+}
+
+// Editing presence
+function setEditing(stepIndex, isEditing) {
+  const username = document.getElementById("username").value.trim();
+  if (!username) return;
+  const field = `editing.${stepIndex}`;
+  if (isEditing) {
+    updateDoc(currentDocRef, { [field]: username });
+  } else {
+    updateDoc(currentDocRef, { [field]: null });
+  }
+}
+
+// Compress image before upload
+async function uploadCompressedImage(index, file) {
+  if (!file) return;
+  const img = await loadImageForCompression(file);
+  const canvas = document.createElement('canvas');
+  const maxWidth = 800; 
+  const scale = Math.min(maxWidth / img.width, 1);
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob(async (blob) => {
+    const storageRef = ref(storage, `processImages/${currentDocRef.id}/${index}/${file.name}`);
+    await uploadBytes(storageRef, blob);
+    const url = await getDownloadURL(storageRef);
+    await updateDoc(currentDocRef, { [`steps.${index}.images`]: arrayUnion(url), lastUpdated: serverTimestamp() });
+  }, 'image/jpeg', 0.7); // Compress to JPEG quality 0.7
+}
+
+function loadImageForCompression(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.src = e.target.result;
+      img.onload = () => resolve(img);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// PDF export
+async function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const snapshot = await currentDocRef.get();
+  const data = (await snapshot).data();
+  let y = 20;
+  doc.setFontSize(16);
+  doc.text(data.groupName + " - " + currentProcessKey, 20, y);
+  y += 10;
+
+  for (let i = 0; i < data.steps.length; i++) {
+    const step = data.steps[i];
+    const checked = step.checked ? "[✔] " : "[ ] ";
+    doc.setFontSize(12);
+    doc.text(checked + step.text, 20, y);
+    y += 8;
+    if (step.note) {
+      const splitNote = doc.splitTextToSize("Notes: " + step.note, 170);
+      doc.text(splitNote, 25, y);
+      y += splitNote.length * 8;
+    }
+    for (let imgUrl of step.images) {
+      const img = await loadImage(imgUrl);
+      doc.addImage(img, 'PNG', 25, y, 50, 50);
+      y += 55;
+      if (y > 270) { doc.addPage(); y = 20; }
+    }
+  }
+  doc.save(`${data.groupName}_${currentProcessKey}.pdf`);
+}
+
+// Helper: Load image as base64 for PDF
+function loadImage(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+  });
 }
 </script>
 
