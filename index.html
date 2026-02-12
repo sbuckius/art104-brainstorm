@@ -3,469 +3,387 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Collaborative Sketch Process</title>
+<title>Collaborative Brainstorming</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-  body { font-family: Arial; max-width: 900px; margin: auto; padding: 20px; background: #f5f5f5; }
-  h1, h2 { color: #333; }
-  select, button, textarea, input[type=file], input[type=text] { font-size: 1rem; padding: 8px; margin: 5px 0; }
-  .step { background: #fff; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 6px solid #4CAF50; }
-  .step input[type="checkbox"] { margin-right: 10px; }
-  .step textarea { width: 100%; margin-top: 5px; }
-  .step img { max-width: 200px; display: block; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; }
-  .editing-label { color: red; font-weight: bold; margin-top: 5px; }
-  .phrase-input { width: 100%; padding: 10px; margin: 10px 0; font-size: 1rem; border: 2px solid #4CAF50; border-radius: 5px; }
-  .phrase-list { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; }
-  .phrase-item { padding: 8px; margin: 5px 0; background: white; border-left: 3px solid #2196F3; border-radius: 3px; }
-  .phrase-author { font-weight: bold; color: #2196F3; margin-right: 10px; }
-  .final-concept { background: #fff3cd; padding: 20px; margin: 20px 0; border-radius: 8px; border: 2px solid #ffc107; }
-  .final-concept h3 { color: #856404; margin-top: 0; }
+body { font-family: Arial; max-width: 1000px; margin:auto; padding:20px; background:#f5f5f5; }
+h1,h2 { color:#333; }
+input, select, button, textarea { font-size:1rem; padding:8px; margin:5px 0; }
+textarea { resize: vertical; min-height:50px; width: 100%; box-sizing: border-box; }
+#groupPage { display:none; }
+.step { background:#fff; padding:15px; margin:10px 0; border-radius:8px; border-left:6px solid #4CAF50; }
+.responses { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+.response-item { flex:1; min-width:200px; }
+.user-label { font-weight:bold; display:block; margin-bottom:3px; padding:3px 6px; border-radius:3px; color:white; }
+.typing { font-size:0.85rem; color:#555; font-style:italic; min-height:18px; }
+.avatar { display:inline-block; padding:5px 10px; margin:2px; border-radius:5px; color:white; font-weight:bold; }
+.leader { border:2px solid gold; }
+#resetBtn { background: #f44336; color: white; }
 </style>
 </head>
 <body>
 
-<h1>Collaborative Sketch to Final Idea</h1>
-
-<p>Enter your name for collaboration:</p>
-<input type="text" id="username" placeholder="Your Name">
-
-<p>Enter a group name (used for shared collaboration):</p>
-<input type="text" id="groupName" placeholder="Group Name">
-
-<select id="processSelect">
-  <option value="">-- Choose a process --</option>
-  <option value="prosCons">Pros and Cons Analysis</option>
-  <option value="mergeIdeas">Merge & Combine Ideas</option>
-  <option value="ranking">Ranking & Elimination</option>
-  <option value="peerFeedback">Peer Review & Feedback</option>
-  <option value="storytelling">Storytelling & Perspective</option>
-  <option value="wackyCorpse">Wacky Exquisite Corpse</option>
-  <option value="collectiveConcept">Collective Concept Builder</option>
+<div id="lobbyPage">
+<h1>Brainstorm Lobby</h1>
+<p>Enter your avatar name:</p>
+<input type="text" id="avatarName" placeholder="Avatar Name">
+<p>Select group (1–10):</p>
+<select id="groupSelect">
+  <option value="">-- Choose a group --</option>
+  <option value="1">Group 1</option>
+  <option value="2">Group 2</option>
+  <option value="3">Group 3</option>
+  <option value="4">Group 4</option>
+  <option value="5">Group 5</option>
+  <option value="6">Group 6</option>
+  <option value="7">Group 7</option>
+  <option value="8">Group 8</option>
+  <option value="9">Group 9</option>
+  <option value="10">Group 10</option>
 </select>
+<br><br>
+<button id="joinGroupBtn">Join Group</button>
+<div id="lobbyMessage"></div>
+</div>
 
-<button id="startBtn">Start / Join Process</button>
+<div id="groupPage">
+<h1 id="groupTitle"></h1>
+<div id="avatars"></div>
+<div id="processSelectionDiv" style="margin:10px 0;"></div>
 <button id="exportBtn">Export PDF</button>
-<button id="resetBtn" style="background: #f44336; color: white;">Reset Process (Delete Data)</button>
-
+<button id="resetBtn">Reset Group Data</button>
 <div id="processSteps"></div>
+</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, serverTimestamp, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 const firebaseConfig = {
-
   apiKey: "AIzaSyBEn-_qOw_6k-v6qjHvSfthNJwvUwdzEI0",
-
   authDomain: "art104-brainstorm-space.firebaseapp.com",
-
   projectId: "art104-brainstorm-space",
-
   storageBucket: "art104-brainstorm-space.firebasestorage.app",
-
   messagingSenderId: "809793310505",
-
   appId: "1:809793310505:web:8bd39b8eb465c784f67138",
-
   measurementId: "G-LND87XNSBT"
-
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+const avatarNameInput = document.getElementById("avatarName");
+const groupSelect = document.getElementById("groupSelect");
+const joinGroupBtn = document.getElementById("joinGroupBtn");
+const lobbyPage = document.getElementById("lobbyPage");
+const groupPage = document.getElementById("groupPage");
+const groupTitle = document.getElementById("groupTitle");
+const avatarsDiv = document.getElementById("avatars");
+const processSelectionDiv = document.getElementById("processSelectionDiv");
+const processStepsDiv = document.getElementById("processSteps");
+const exportBtn = document.getElementById("exportBtn");
+const resetBtn = document.getElementById("resetBtn");
+
+const userColors = ["#FF6F61","#6B5B95","#88B04B","#F7CAC9"];
+let username="", groupNum="", currentDocRef=null, isLeader=false, currentProcessKey="";
+let stepsRendered = false; // Track if steps UI has been created
+
 const processes = {
-  prosCons: ["List all 10 sketches.", "Discuss strengths and weaknesses.", "Write pros and cons.", "Decide strongest sketches.", "Narrow to 2–3 sketches to refine."],
-  mergeIdeas: ["Review sketches, identify best elements.", "Sketch combinations of strong elements.", "Discuss which merged sketches are cohesive.", "Refine one merged idea.", "Evaluate against goals and adjust."],
-  ranking: ["Establish evaluation criteria.", "Rank each sketch.", "Identify top 3 sketches.", "Remove weaker sketches, refine remaining.", "Finalize strongest sketch."],
-  peerFeedback: ["Present sketches to other group.", "Collect feedback on strongest sketches.", "Discuss feedback and find common themes.", "Choose sketch fitting feedback.", "Refine into final idea."],
-  storytelling: ["Imagine story for each sketch.", "Evaluate clearest story.", "Discuss how story supports goals.", "Select strongest narrative sketch.", "Refine into final idea."],
-  wackyCorpse: ["Add your sketch (without seeing the full previous sketches).", "Next participant can only see the last uploaded image.", "Add a creative twist to the partial sketch.", "Repeat until all group members have contributed.", "Reveal the final combined sketch and discuss!"],
-  collectiveConcept: ["Each member contributes a phrase, sentence, or theme.", "Review all contributions.", "Discuss how phrases connect or contrast.", "Synthesize into a unified concept.", "Refine the final collective concept."]
+  prosCons: ["List sketches", "Discuss strengths", "Write pros/cons", "Decide strongest", "Refine top ideas"],
+  mergeIdeas: ["Review sketches", "Combine elements", "Discuss cohesion", "Refine merged", "Adjust"],
+  ranking: ["Set criteria", "Rank sketches", "Top 3", "Eliminate weak", "Finalize strongest"],
+  peerFeedback: ["Present sketches", "Collect feedback", "Find themes", "Choose best", "Refine"],
+  storytelling: ["Create narrative", "Evaluate clarity", "Check alignment", "Choose strongest", "Refine"],
+  collectiveConcept: ["Each user contributes a phrase", "Review contributions", "Discuss connections", "Write final combined sentence"]
 };
 
-let currentDocRef;
-let currentProcessKey;
-
-function startProcess() {
-  const username = document.getElementById("username").value.trim();
-  const groupName = document.getElementById("groupName").value.trim();
-  currentProcessKey = document.getElementById("processSelect").value;
-
-  if (!username || !groupName || !currentProcessKey) {
-    alert("Enter your name, group name, and select a process.");
-    return;
-  }
-
-  const processId = groupName.replace(/\s+/g,'_');
-  currentDocRef = doc(db, "processes", processId);
-
-  const initialData = {
-    groupName,
-    steps: processes[currentProcessKey].map(text => ({text, checked:false, note:"", images:[] })),
-    editing: {},
-    lastUpdated: serverTimestamp()
-  };
-
-  if (currentProcessKey === "collectiveConcept") {
-    initialData.phrases = [];
-  }
-
-  // Use set without merge to ensure clean data structure
-  setDoc(currentDocRef, initialData);
-
-  onSnapshot(currentDocRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      
-      // Validate that steps is an array
-      if (!Array.isArray(data.steps)) {
-        console.error("Data corruption detected - steps is not an array:", data.steps);
-        alert("Data corruption detected. Click 'Reset Process' to fix.");
-        return;
-      }
-      
-      renderSteps(data.steps, currentProcessKey, data.editing || {}, data.phrases || []);
-    }
-  });
-}
-
-async function resetProcess() {
-  if (!currentDocRef) {
-    alert("No process to reset. Start a process first.");
+resetBtn.addEventListener("click", async () => {
+  if(!currentDocRef) {
+    alert("No group to reset!");
     return;
   }
   
-  if (confirm("Are you sure you want to delete all data for this group? This cannot be undone!")) {
+  if(confirm("This will DELETE ALL DATA for this group and restart fresh. Are you sure?")) {
     await deleteDoc(currentDocRef);
-    alert("Process deleted. Click 'Start / Join Process' to create a fresh one.");
-    document.getElementById("processSteps").innerHTML = '';
+    alert("Group deleted! Refreshing page...");
+    location.reload();
   }
-}
+});
 
-function renderSteps(steps, processKey, editingMap={}, phrases=[]) {
-  const stepsDiv = document.getElementById("processSteps");
+joinGroupBtn.addEventListener("click", async () => {
+  username = avatarNameInput.value.trim();
+  groupNum = groupSelect.value;
+  if(!username||!groupNum){ alert("Enter avatar name and select a group."); return; }
 
-  const currentNotes = {};
-  steps.forEach((step, index) => {
-    const ta = document.getElementById(`note${index}`);
-    if (ta) currentNotes[index] = ta.value;
-  });
+  const docId = `group_${groupNum}`;
+  currentDocRef = doc(db,"groups",docId);
 
-  stepsDiv.innerHTML = '';
-  const username = document.getElementById("username").value.trim();
-
-  if (processKey === "collectiveConcept") {
-    const phraseDiv = document.createElement('div');
-    phraseDiv.className = 'step';
+  const snap = await getDoc(currentDocRef);
+  if(!snap.exists()){
+    await setDoc(currentDocRef,{
+      members:[{name:username,color:userColors[0],leader:true}],
+      process:"",
+      steps:[],
+      lastUpdated:serverTimestamp()
+    });
+    isLeader = true;
+  } else {
+    const data = snap.data();
+    const members = data.members || [];
+    if(members.length>=4){ alert("Group full!"); return; }
     
-    const userHasContributed = phrases.some(p => p.author === username);
-    
-    phraseDiv.innerHTML = `
-      <h3>💡 Contribute Your Phrase/Theme</h3>
-      <input type="text" id="phraseInput" class="phrase-input" placeholder="Enter your phrase, sentence, or theme..." ${userHasContributed ? 'disabled' : ''}>
-      <button id="addPhraseBtn" ${userHasContributed ? 'disabled' : ''}>Add My Contribution</button>
-      ${userHasContributed ? '<p style="color: green;">✓ You have already contributed!</p>' : ''}
-    `;
-    stepsDiv.appendChild(phraseDiv);
+    const existingIndex = members.findIndex(m => m.name === username);
+    if(existingIndex >= 0){
+      isLeader = members[existingIndex].leader;
+    } else {
+      const color = userColors[members.length];
+      await updateDoc(currentDocRef,{members:arrayUnion({name:username,color,leader:false})});
+      isLeader = false;
+    }
+  }
 
-    if (phrases.length > 0) {
-      const phraseListDiv = document.createElement('div');
-      phraseListDiv.className = 'phrase-list';
-      phraseListDiv.innerHTML = '<h3>📝 Group Contributions:</h3>';
-      
-      phrases.forEach(phrase => {
-        const phraseItem = document.createElement('div');
-        phraseItem.className = 'phrase-item';
-        phraseItem.innerHTML = `<span class="phrase-author">${phrase.author}:</span> ${phrase.text}`;
-        phraseListDiv.appendChild(phraseItem);
+  lobbyPage.style.display="none";
+  groupPage.style.display="block";
+  groupTitle.textContent = `Group ${groupNum}`;
+  setupGroupUI();
+});
+
+function setupGroupUI(){
+  onSnapshot(currentDocRef, snap=>{
+    if(!snap.exists()) return;
+    
+    const data = snap.data();
+
+    // Show avatars
+    avatarsDiv.innerHTML="";
+    data.members.forEach(m=>{
+      const span=document.createElement("span");
+      span.className="avatar";
+      if(m.leader) span.classList.add("leader");
+      span.style.backgroundColor=m.color;
+      span.textContent=m.name + (m.leader?" (Leader)":"");
+      avatarsDiv.appendChild(span);
+    });
+
+    // Leader selects process
+    if(isLeader && !data.process){
+      processSelectionDiv.innerHTML='<select id="processSelectLeader"><option value="">-- Choose a process --</option></select><button id="startProcessBtn">Start Process</button>';
+      const select=document.getElementById("processSelectLeader");
+      Object.keys(processes).forEach(k=>{
+        const opt=document.createElement("option");
+        opt.value=k; opt.textContent=k;
+        select.appendChild(opt);
       });
       
-      stepsDiv.appendChild(phraseListDiv);
-    }
-
-    if (!userHasContributed) {
-      setTimeout(() => {
-        const addBtn = document.getElementById('addPhraseBtn');
-        if (addBtn) {
-          addBtn.addEventListener('click', addPhrase);
-        }
-      }, 0);
-    }
-
-    if (steps[3] && steps[3].checked && phrases.length > 0) {
-      const conceptDiv = document.createElement('div');
-      conceptDiv.className = 'final-concept';
-      conceptDiv.innerHTML = `
-        <h3>🎨 Synthesized Concept</h3>
-        <p><strong>Combined themes:</strong> ${phrases.map(p => p.text).join(' • ')}</p>
-        <textarea id="finalConceptText" class="phrase-input" placeholder="Write the unified concept that emerges from all contributions...">${steps[3].note}</textarea>
-      `;
-      stepsDiv.appendChild(conceptDiv);
-
-      setTimeout(() => {
-        const conceptTextarea = document.getElementById('finalConceptText');
-        if (conceptTextarea) {
-          conceptTextarea.addEventListener('input', (e) => {
-            updateNote(3, e.target.value);
+      document.getElementById("startProcessBtn").addEventListener("click", async ()=>{
+        const selectedProcess = select.value;
+        if(!selectedProcess) { alert("Select a process first!"); return; }
+        currentProcessKey = selectedProcess;
+        
+        const stepData = processes[currentProcessKey].map(text=>{
+          const responses = {};
+          const typing = {};
+          data.members.forEach((m) => {
+            responses[m.name] = "";
+            typing[m.name] = "";
           });
-        }
-      }, 0);
-    }
-  }
-
-  steps.forEach((step, index) => {
-    const div = document.createElement('div');
-    div.className = 'step';
-
-    let imagesHTML = '';
-    if (processKey === "wackyCorpse" && step.images && step.images.length) {
-      const lastImage = step.images[step.images.length - 1];
-      imagesHTML = `<img src="${lastImage}">`;
-    } else if (step.images) {
-      imagesHTML = step.images.map(url => `<img src="${url}">`).join('');
-    }
-
-    let editingLabel = '';
-    if (editingMap[index] && editingMap[index] !== username) {
-      editingLabel = `<div class="editing-label">Editing: ${editingMap[index]}</div>`;
+          return {text, responses, typing};
+        });
+        
+        await setDoc(currentDocRef, {
+          members: data.members,
+          process: currentProcessKey,
+          steps: stepData,
+          lastUpdated: serverTimestamp()
+        });
+        
+        stepsRendered = false; // Allow re-render with new process
+      });
+    } else if(data.process){
+      processSelectionDiv.innerHTML = `<b>Process:</b> ${data.process}`;
+      currentProcessKey = data.process;
+    } else {
+      processSelectionDiv.innerHTML = "Waiting for leader to select process...";
     }
 
-    div.innerHTML = `
-      <label>
-        <input type="checkbox" id="check${index}" ${step.checked ? 'checked':''} onchange="toggleCheck(${index}, this.checked)">
-        ${step.text}
-      </label>
-      ${editingLabel}
-      <textarea id="note${index}" placeholder="Add notes...">${currentNotes[index] !== undefined ? currentNotes[index] : (step.note || '')}</textarea>
-      <input type="file" id="file${index}" accept="image/*" onchange="uploadCompressedImage(${index}, this.files[0])">
-      <div id="images${index}">${imagesHTML}</div>
-    `;
-    stepsDiv.appendChild(div);
-
-    const textarea = document.getElementById(`note${index}`);
-
-    let typingTimeout;
-    textarea.addEventListener('input', e => {
-      updateNote(index, e.target.value);
-      setEditing(index, true); 
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => setEditing(index, false), 1000); 
-    });
-
-    textarea.addEventListener('focus', () => setEditing(index, true));
-    textarea.addEventListener('blur', () => setEditing(index, false));
+    // Validate and render/update steps
+    if(data.process && data.steps && Array.isArray(data.steps) && data.steps.length > 0){
+      if(!stepsRendered) {
+        // First time: create the UI
+        renderSteps(data.steps, data.members);
+        stepsRendered = true;
+      } else {
+        // Subsequent times: just update values without re-rendering
+        updateStepValues(data.steps, data.members);
+      }
+    } else if(data.process && (!data.steps || !Array.isArray(data.steps))) {
+      processStepsDiv.innerHTML = '<p style="color:red; font-size:1.2em; padding:20px; background:white; border-radius:8px;">ERROR: Data corrupted. Click "Reset Group Data" button above to fix.</p>';
+      stepsRendered = false;
+    }
   });
 }
 
-async function addPhrase() {
-  const username = document.getElementById("username").value.trim();
-  const phraseInput = document.getElementById("phraseInput");
-  const phraseText = phraseInput.value.trim();
-
-  if (!phraseText) {
-    alert("Please enter a phrase or theme!");
-    return;
-  }
-
-  if (!username) {
-    alert("Please enter your name first!");
-    return;
-  }
-
-  await updateDoc(currentDocRef, {
-    phrases: arrayUnion({ author: username, text: phraseText, timestamp: new Date().toISOString() }),
-    lastUpdated: serverTimestamp()
-  });
-
-  phraseInput.value = '';
-}
-
-async function toggleCheck(index, checked) {
-  await updateDoc(currentDocRef, { [`steps.${index}.checked`]: checked, lastUpdated: serverTimestamp() });
-}
-
-async function updateNote(index, note) {
-  await updateDoc(currentDocRef, { [`steps.${index}.note`]: note, lastUpdated: serverTimestamp() });
-}
-
-function setEditing(stepIndex, isEditing) {
-  const username = document.getElementById("username").value.trim();
-  if (!username) return;
-  const field = `editing.${stepIndex}`;
-  if (isEditing) {
-    updateDoc(currentDocRef, { [field]: username });
-  } else {
-    updateDoc(currentDocRef, { [field]: null });
-  }
-}
-
-async function uploadCompressedImage(index, file) {
-  if (!file) return;
+function renderSteps(steps, members){
+  processStepsDiv.innerHTML="";
   
-  try {
-    const img = await loadImageForCompression(file);
-    const canvas = document.createElement('canvas');
-    const maxWidth = 600;
-    const scale = Math.min(maxWidth / img.width, 1);
-    canvas.width = img.width * scale;
-    canvas.height = img.height * scale;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    
-    const base64Image = canvas.toDataURL('image/jpeg', 0.6);
-    
-    await updateDoc(currentDocRef, { 
-      [`steps.${index}.images`]: arrayUnion(base64Image), 
-      lastUpdated: serverTimestamp() 
-    });
-    
-  } catch (error) {
-    console.error("Error uploading image:", error);
-    alert("Error uploading image: " + error.message);
-  }
-}
+  steps.forEach((step,stepIndex)=>{
+    const div=document.createElement("div");
+    div.className="step";
+    const title=document.createElement("div");
+    title.innerHTML = `<strong>${step.text}</strong>`;
+    div.appendChild(title);
 
-function loadImageForCompression(file) {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.src = e.target.result;
-      img.onload = () => resolve(img);
-    };
-    reader.readAsDataURL(file);
+    const responsesDiv=document.createElement("div");
+    responsesDiv.className="responses";
+
+    members.forEach((member)=>{
+      const respDiv=document.createElement("div");
+      respDiv.className="response-item";
+      
+      const label=document.createElement("div");
+      label.className="user-label"; 
+      label.textContent=member.name;
+      label.style.backgroundColor=member.color;
+
+      const ta=document.createElement("textarea");
+      ta.id = `step${stepIndex}_${member.name}`;
+      ta.value = step.responses[member.name] || "";
+      ta.disabled = (member.name !== username);
+      
+      if(member.name === username){
+        ta.style.backgroundColor = "#fff";
+        ta.style.border = `2px solid ${member.color}`;
+      } else {
+        ta.style.backgroundColor = "#f0f0f0";
+      }
+
+      let typingTimeout;
+      ta.addEventListener("input", async ()=>{
+        const updatedResponses = {...step.responses};
+        updatedResponses[username] = ta.value;
+        const updatedTyping = {...step.typing};
+        updatedTyping[username] = username;
+        
+        try {
+          await updateDoc(currentDocRef,{
+            [`steps.${stepIndex}.responses`]: updatedResponses,
+            [`steps.${stepIndex}.typing`]: updatedTyping,
+            lastUpdated: serverTimestamp()
+          });
+        } catch(err) {
+          console.error("Update error:", err);
+        }
+        
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(async ()=>{
+          const clearTyping = {...step.typing};
+          clearTyping[username] = "";
+          await updateDoc(currentDocRef,{[`steps.${stepIndex}.typing`]: clearTyping});
+        }, 1000);
+      });
+
+      const typingSpan=document.createElement("div");
+      typingSpan.className="typing";
+      typingSpan.id = `typing${stepIndex}_${member.name}`;
+      const typingUser = step.typing[member.name];
+      typingSpan.textContent = (typingUser && typingUser !== "" && member.name !== username) ? `✏️ Typing...` : "";
+
+      respDiv.appendChild(label);
+      respDiv.appendChild(ta);
+      respDiv.appendChild(typingSpan);
+      responsesDiv.appendChild(respDiv);
+    });
+
+    div.appendChild(responsesDiv);
+    processStepsDiv.appendChild(div);
   });
 }
 
-async function exportPDF() {
-  try {
-    if (!window.jspdf) {
-      alert("ERROR: jsPDF library not loaded!");
-      return;
-    }
-
-    const { jsPDF } = window.jspdf;
-    
-    if (!currentDocRef) {
-      alert("ERROR: No process started. Please click 'Start / Join Process' first.");
-      return;
-    }
-
-    const snapshot = await getDoc(currentDocRef);
-    
-    if (!snapshot.exists()) {
-      alert("ERROR: No Firebase data found!");
-      return;
-    }
-
-    const data = snapshot.data();
-    
-    // Validate data structure
-    if (!Array.isArray(data.steps)) {
-      alert("ERROR: Data is corrupted (steps is not an array). Click 'Reset Process' to fix.");
-      console.error("Steps is not an array:", data.steps);
-      return;
-    }
-
-    const pdf = new jsPDF();
-    let y = 20;
-    const pageHeight = 280;
-    const margin = 20;
-
-    // Title
-    pdf.setFontSize(16);
-    pdf.setFont(undefined, 'bold');
-    pdf.text(`${data.groupName} - ${currentProcessKey}`, margin, y);
-    y += 15;
-
-    // Phrases for collectiveConcept
-    if (currentProcessKey === "collectiveConcept" && data.phrases && data.phrases.length > 0) {
-      if (y + 20 > pageHeight) { pdf.addPage(); y = margin; }
+// Update values WITHOUT re-rendering
+function updateStepValues(steps, members){
+  steps.forEach((step, stepIndex) => {
+    members.forEach(member => {
+      const ta = document.getElementById(`step${stepIndex}_${member.name}`);
+      const typingSpan = document.getElementById(`typing${stepIndex}_${member.name}`);
       
-      pdf.setFontSize(14);
-      pdf.setFont(undefined, 'bold');
-      pdf.text("Group Contributions:", margin, y);
-      y += 10;
-      
-      pdf.setFontSize(11);
-      pdf.setFont(undefined, 'normal');
-      
-      for (const phrase of data.phrases) {
-        const text = `${phrase.author}: ${phrase.text}`;
-        const lines = pdf.splitTextToSize(text, 170);
-        const lineHeight = lines.length * 6;
-        
-        if (y + lineHeight > pageHeight) { pdf.addPage(); y = margin; }
-        
-        pdf.text(lines, margin + 5, y);
-        y += lineHeight + 3;
-      }
-      y += 10;
-    }
-
-    // Steps
-    for (let i = 0; i < data.steps.length; i++) {
-      const step = data.steps[i];
-      
-      if (y + 15 > pageHeight) { pdf.addPage(); y = margin; }
-      
-      const checkbox = step.checked ? "[✓] " : "[ ] ";
-      pdf.setFontSize(12);
-      pdf.setFont(undefined, 'bold');
-      pdf.text(checkbox + step.text, margin, y);
-      y += 10;
-
-      if (step.note && step.note.trim()) {
-        pdf.setFontSize(10);
-        pdf.setFont(undefined, 'normal');
-        const noteLines = pdf.splitTextToSize("Notes: " + step.note, 170);
-        const noteHeight = noteLines.length * 6;
-        
-        if (y + noteHeight > pageHeight) { pdf.addPage(); y = margin; }
-        
-        pdf.text(noteLines, margin + 5, y);
-        y += noteHeight + 5;
-      }
-
-      if (step.images && step.images.length > 0) {
-        for (const base64Image of step.images) {
-          if (y + 55 > pageHeight) { pdf.addPage(); y = margin; }
-          
-          try {
-            pdf.addImage(base64Image, 'JPEG', margin + 5, y, 50, 50);
-            y += 55;
-          } catch (err) {
-            console.error("Image error:", err);
-            pdf.setFontSize(9);
-            pdf.setTextColor(255, 0, 0);
-            pdf.text("[Image could not be loaded]", margin + 5, y);
-            pdf.setTextColor(0, 0, 0);
-            y += 10;
-          }
-        }
+      if(ta && member.name !== username){
+        // Only update OTHER users' textareas (not your own to prevent cursor jump)
+        ta.value = step.responses[member.name] || "";
       }
       
-      y += 5;
-    }
-
-    pdf.save(`${data.groupName}_${currentProcessKey}.pdf`);
-    alert("PDF exported successfully!");
-
-  } catch (error) {
-    alert("ERROR: " + error.message);
-    console.error("PDF Export Error:", error);
-  }
+      if(typingSpan){
+        const typingUser = step.typing[member.name];
+        typingSpan.textContent = (typingUser && typingUser !== "" && member.name !== username) ? `✏️ Typing...` : "";
+      }
+    });
+  });
 }
 
-window.toggleCheck = toggleCheck;
-window.uploadCompressedImage = uploadCompressedImage;
+exportBtn.addEventListener("click", async ()=>{
+  if(!currentDocRef) {
+    alert("Group not started.");
+    return;
+  }
+  
+  const snap = await getDoc(currentDocRef);
+  if(!snap.exists()) { 
+    alert("No data found!");
+    return;
+  }
+  
+  const data = snap.data();
+  
+  if(!data.process || !data.steps || !Array.isArray(data.steps)) {
+    alert("ERROR: Data is corrupted or no process started. Click 'Reset Group Data' to fix.");
+    return;
+  }
+  
+  if(!window.jspdf) {
+    alert("PDF library not loaded!");
+    return;
+  }
+  
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF();
+  let y=20;
+  
+  pdf.setFontSize(16); 
+  pdf.setFont(undefined, 'bold');
+  pdf.text(`Group ${groupNum}`,20,y); 
+  y+=10;
+  
+  pdf.setFontSize(12); 
+  pdf.text(`Process: ${data.process}`,20,y); 
+  y+=15;
 
-document.getElementById('startBtn').addEventListener('click', startProcess);
-document.getElementById('exportBtn').addEventListener('click', exportPDF);
-document.getElementById('resetBtn').addEventListener('click', resetProcess);
+  data.steps.forEach((step)=>{
+    if(y > 270) { pdf.addPage(); y = 20; }
+    
+    pdf.setFontSize(12);
+    pdf.setFont(undefined,"bold"); 
+    pdf.text(step.text, 20, y); 
+    y+=8;
+    
+    pdf.setFontSize(10);
+    pdf.setFont(undefined,"normal");
+    
+    data.members.forEach(member=>{
+      const response = step.responses[member.name];
+      if(response && response.trim()){
+        const lines = pdf.splitTextToSize(`${member.name}: ${response}`, 170);
+        
+        if(y + (lines.length * 6) > 280) { pdf.addPage(); y = 20; }
+        
+        pdf.text(lines, 25, y);
+        y += lines.length * 6 + 2;
+      }
+    });
+    
+    y += 5;
+  });
 
+  pdf.save(`Group${groupNum}_${data.process}.pdf`);
+  alert("PDF exported successfully!");
+});
 </script>
-
 </body>
 </html>
