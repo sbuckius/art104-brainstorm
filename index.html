@@ -3,22 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Collaborative Brainstorming</title>
+<title>🌈 Collaborative Brainstorming</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-body { font-family: Arial; max-width: 1000px; margin:auto; padding:20px; background:#f5f5f5; }
-h1,h2 { color:#333; }
-input, select, button, textarea { font-size:1rem; padding:8px; margin:5px 0; }
-textarea { resize: vertical; min-height:60px; width: 100%; box-sizing: border-box; }
-#groupPage { display:none; }
-.step { background:#fff; padding:15px; margin:15px 0; border-radius:8px; border-left:6px solid #4CAF50; }
-.step-title { font-weight: bold; font-size: 1.1em; margin-bottom: 10px; }
-.responses { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:15px; margin-top:10px; }
-.response-box { border: 2px solid #ddd; border-radius: 5px; padding: 10px; }
-.user-label { font-weight:bold; padding:5px; border-radius:3px; color:white; margin-bottom: 5px; }
-.avatar { display:inline-block; padding:8px 12px; margin:3px; border-radius:5px; color:white; font-weight:bold; }
-.leader { border:3px solid gold; }
-#resetBtn { background: #f44336; color: white; margin-left: 10px; }
+body { 
+    font-family: 'Poppins', Arial, sans-serif; 
+    max-width: 1000px; 
+    margin: auto; 
+    padding: 20px; 
+    background: #111; 
+    color: #fff;
+}
+
+h1 { 
+    font-size: 2.5rem; 
+    text-align: center; 
+    color: #ff0000; 
+    text-shadow: 2px 2px 5px #000; 
+}
+
+input, select, button, textarea { 
+    font-size: 1rem; 
+    padding: 10px; 
+    margin: 8px 0; 
+    border-radius: 12px; 
+    border: 2px solid #444; 
+    outline: none; 
+}
+
+input:focus, select:focus, textarea:focus { border-color: #fff; box-shadow: 0 0 10px #fff; }
+
+button { 
+    cursor: pointer; 
+    font-weight: bold; 
+    border: none; 
+    color: #fff; 
+    padding: 10px 15px;
+}
+
+#joinGroupBtn { background: #ff0000; }
+#exportBtn { background: #00ff00; color: #000; }
+#resetBtn { background: #ff00ff; }
+
+.step { 
+    background: #222; 
+    padding: 20px; 
+    margin: 20px 0; 
+    border-radius: 15px; 
+    border-left: 8px solid; 
+    transition: all 0.3s ease;
+}
+
+.step-title { font-weight: 700; font-size: 1.2em; margin-bottom: 12px; color: #fff; }
+
+.avatar { display: inline-block; padding: 10px 15px; margin: 5px; border-radius: 12px; color: #fff; font-weight: bold; }
+
+.leader { border: 3px solid gold; animation: glow 1.5s infinite alternate; }
+@keyframes glow { 0% { box-shadow: 0 0 5px gold; } 100% { box-shadow: 0 0 20px gold; } }
+
+.response-box { border: 3px solid; border-radius: 10px; padding: 12px; background: #333; margin-bottom: 10px; transition: border-color 0.3s; }
+.user-label { font-weight: bold; padding: 5px 8px; border-radius: 5px; display: inline-block; }
+
+#processSelectionDiv select { min-width: 220px; border: 2px solid #fff; background: #111; color: #fff; }
+#processSelectionDiv button { background: #ff00ff; }
+
+textarea { width: 100%; min-height: 60px; resize: vertical; background: #111; color: #fff; border-radius: 8px; padding: 8px; }
+textarea:disabled { background: #333; color: #fff; }
 </style>
 </head>
 <body>
@@ -70,304 +120,170 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const userColors = ["#FF6F61","#6B5B95","#88B04B","#F7CAC9"];
+const userColors = ["#ff0000","#ff7f00","#00ff00","#0000ff"];
 let username = "";
 let groupNum = "";
 let currentDocRef = null;
 let isLeader = false;
 let unsubscribe = null;
 
+// ---------- PROCESSES ----------
 const processes = {
-  prosCons: ["List your favorite sketches", "List strengths of these sketches", "Write pros/cons of these sketches", "Select the strongest ideas", "Describe refinements to the top ideas.","Summarize the best refined idea."],
-  mergeIdeas: ["List all sketches", "Pick parts of the ideas to combine.", "Describe the combined ideas and how they go together.", "Describe refinements to the combined idea.", "Adjust the final idea and describe the outcome."],
-  ranking: ["List criteria that you think should be included in the project.", "Rank the sketches", "Select the Top 3 ideas.", "Eliminate the weak parts of these ideas.", "Finalize the details of the best idea."],
-  peerFeedback: ["Present sketches.", "Collect feedback from someone about the sketches.", "Find common themes in the feedback.", "Choose the best ideas based on the feedback.", "Refine the best idea."],
-  storytelling: ["Create a short narrative.", "Evaluate the clarity and creativity of the story.", "Check alignment with other group members' ideas.", "Choose the strongest elements of one or more than one story.", "Refine the story."],
-  collectiveConcept: ["Each group member contributes a phrase", "Combine parts of all contributions", "Find interesting connections", "Write the final combined sentence with the best parts of the phrases."],
-  sillyMashup: ["Each group member contributes a phrase", "Each group member contributes another phrase", "Each group member contributes another phrase", "Combine all phrases."],
-  technologyMashup: ["Each group member contributes a phrase about technology", "Each group member contributes another phrase about technology", "Each group member contributes another phrase about technology", "Combine all phrases and find a concept."],
-  mindMapping: [
-    "Type the central topic or problem.",
-    "Type main ideas related to the topic branching out from the center.",
-    "Type supporting details, examples, or related concepts for each main idea.",
-    "Type connections, keywords, or associations between ideas.",
-    "All: Review all typed ideas and look for new connections or insights and pick an idea that connect them all."
-  ],
-  brainwriting: [
-    "Type 2–3 ideas.",
-    "Read previous contributions and type additional ideas or build on them.",
-    "Type more ideas based on the existing contributions.",
-    "Add final ideas to complete the collection.",
-    "All: Review all typed ideas together as a group and pick ones that you like best."
-  ],
-  roundRobin: [
-    "Type one idea.",
-    "Type another idea after reading previous contributions.",
-    "Type another new idea.",
-    "Type another idea.",
-    "All: Look at all of the ideas that are generated, then review and prioritize and select ones that you like best."
-  ],
-  SCAMPER: [
-    "Type an idea and change it by 'Substituting' something in the idea.",
-    "Type an idea and change it by 'Combining' something in the idea.",
-    "Type an idea and change it by 'Modifying' something in the idea..",
-    "Type an idea using 'Put to another use', 'Eliminate', and 'Reverse' prompts.",
-    "All: Review all typed ideas and select the most interesting ones."
-  ],
-  freeAssociation: [
-    "Type the topic clearly in the blank.",
-    "Type any ideas that come to mind without judgment.",
-    "Type additional ideas freely.",
-    "Continue adding any ideas that come to mind.",
-    "All: Review all typed ideas, then type ones that you like best."
-  ]
+  prosCons: ["List your favorite sketches","List strengths of these sketches","Write pros/cons of these sketches","Select the strongest ideas","Describe refinements to the top ideas.","Summarize the best refined idea."],
+  mergeIdeas: ["List all sketches","Pick parts of the ideas to combine.","Describe the combined ideas and how they go together.","Describe refinements to the combined idea.","Adjust the final idea and describe the outcome."],
+  ranking: ["List criteria that you think should be included in the project.","Rank the sketches","Select the Top 3 ideas.","Eliminate the weak parts of these ideas.","Finalize the details of the best idea."],
+  peerFeedback: ["Present sketches.","Collect feedback from someone about the sketches.","Find common themes in the feedback.","Choose the best ideas based on the feedback.","Refine the best idea."],
+  storytelling: ["Create a short narrative.","Evaluate the clarity and creativity of the story.","Check alignment with other group members' ideas.","Choose the strongest elements of one or more than one story.","Refine the story."],
+  collectiveConcept: ["Each group member contributes a phrase","Combine parts of all contributions","Find interesting connections","Write the final combined sentence with the best parts of the phrases."],
+  sillyMashup: ["Each group member contributes a phrase","Each group member contributes another phrase","Each group member contributes another phrase","Combine all phrases."],
+  technologyMashup: ["Each group member contributes a phrase about technology","Each group member contributes another phrase about technology","Each group member contributes another phrase about technology","Combine all phrases and find a concept."],
+  mindMapping: ["Type the central topic or problem.","Type main ideas related to the topic branching out from the center.","Type supporting details, examples, or related concepts for each main idea.","Type connections, keywords, or associations between ideas.","All: Review all typed ideas and look for new connections or insights and pick an idea that connect them all."],
+  brainwriting: ["Type 2–3 ideas.","Read previous contributions and type additional ideas or build on them.","Type more ideas based on the existing contributions.","Add final ideas to complete the collection.","All: Review all typed ideas together as a group and pick ones that you like best."],
+  roundRobin: ["Type one idea.","Type another idea after reading previous contributions.","Type another new idea.","Type another idea.","All: Look at all of the ideas that are generated, then review and prioritize and select ones that you like best."],
+  SCAMPER: ["Type an idea and change it by 'Substituting' something in the idea.","Type an idea and change it by 'Combining' something in the idea.","Type an idea and change it by 'Modifying' something in the idea..","Type an idea using 'Put to another use', 'Eliminate', and 'Reverse' prompts.","All: Review all typed ideas and select the most interesting ones."],
+  freeAssociation: ["Type the topic clearly in the blank.","Type any ideas that come to mind without judgment.","Type additional ideas freely.","Continue adding any ideas that come to mind.","All: Review all typed ideas, then type ones that you like best."]
 };
 
-// JOIN GROUP
+// ---------- Rainbow palette ----------
+const rainbowColors = ["#ff0000","#ff7f00","#ffff00","#00ff00","#0000ff","#4b0082","#9400d3"];
+function getStepColor(index){ return rainbowColors[index % rainbowColors.length]; }
+function getUserColor(index){ return rainbowColors[index % rainbowColors.length]; }
+
+// ---------- JOIN GROUP ----------
 document.getElementById("joinGroupBtn").addEventListener("click", async () => {
   username = document.getElementById("avatarName").value.trim();
   groupNum = document.getElementById("groupSelect").value;
-  
-  if(!username || !groupNum) {
-    alert("Please enter your name and select a group!");
-    return;
-  }
+  if(!username||!groupNum){ alert("Please enter your name and select a group!"); return; }
 
-  currentDocRef = doc(db, "groups", `group_${groupNum}`);
+  currentDocRef = doc(db,"groups",`group_${groupNum}`);
   const snap = await getDoc(currentDocRef);
-  
-  if(!snap.exists()) {
-    // Create new group
-    await setDoc(currentDocRef, {
-      members: [{name: username, color: userColors[0], leader: true}],
-      processName: "",
-      steps: []
-    });
+
+  if(!snap.exists()){
+    await setDoc(currentDocRef,{members:[{name:username,color:getUserColor(0),leader:true}],processName:"",steps:[]});
     isLeader = true;
   } else {
-    // Join existing group
-    const data = snap.data();
-    const existingMember = data.members.find(m => m.name === username);
-    
-    if(existingMember) {
-      isLeader = existingMember.leader;
-    } else {
-      if(data.members.length >= 4) {
-        alert("Group is full (max 4 members)!");
-        return;
-      }
-      const newMembers = [...data.members, {
-        name: username,
-        color: userColors[data.members.length],
-        leader: false
-      }];
-      await setDoc(currentDocRef, {...data, members: newMembers});
-      isLeader = false;
+    const data=snap.data();
+    const existingMember = data.members.find(m=>m.name===username);
+    if(existingMember){ isLeader=existingMember.leader; } 
+    else {
+      if(data.members.length>=4){ alert("Group is full!"); return; }
+      const newMembers=[...data.members,{name:username,color:getUserColor(data.members.length),leader:false}];
+      await setDoc(currentDocRef,{...data,members:newMembers});
+      isLeader=false;
     }
   }
-  
-  document.getElementById("lobbyPage").style.display = "none";
-  document.getElementById("groupPage").style.display = "block";
-  document.getElementById("groupTitle").textContent = `Group ${groupNum}`;
-  
+
+  document.getElementById("lobbyPage").style.display="none";
+  document.getElementById("groupPage").style.display="block";
+  document.getElementById("groupTitle").textContent=`Group ${groupNum}`;
   startListening();
 });
 
-// RESET GROUP
-document.getElementById("resetBtn").addEventListener("click", async () => {
-  if(!currentDocRef) return;
-  
-  if(confirm("⚠️ Delete ALL group data and start fresh?")) {
-    if(unsubscribe) unsubscribe();
-    await deleteDoc(currentDocRef);
-    location.reload();
-  }
-});
-
-// LISTEN TO CHANGES
-function startListening() {
-  unsubscribe = onSnapshot(currentDocRef, (snap) => {
+// ---------- LISTEN & UPDATE ----------
+function startListening(){
+  unsubscribe=onSnapshot(currentDocRef,snap=>{
     if(!snap.exists()) return;
-    
-    const data = snap.data();
+    const data=snap.data();
     updateUI(data);
   });
 }
 
-// UPDATE UI
-function updateUI(data) {
-  // Show members
-  const avatarsDiv = document.getElementById("avatars");
-  avatarsDiv.innerHTML = "";
-  data.members.forEach(m => {
-    const span = document.createElement("span");
-    span.className = "avatar";
+function updateUI(data){
+  // avatars
+  const avatarsDiv=document.getElementById("avatars"); avatarsDiv.innerHTML="";
+  data.members.forEach((m,i)=>{
+    const span=document.createElement("span");
+    span.className="avatar"; span.style.backgroundColor=m.color;
     if(m.leader) span.classList.add("leader");
-    span.style.backgroundColor = m.color;
-    span.textContent = m.name + (m.leader ? " 👑" : "");
+    span.textContent=m.name+(m.leader?" 👑":"");
     avatarsDiv.appendChild(span);
   });
-  
-  // Process selection (leader only)
-  const processDiv = document.getElementById("processSelectionDiv");
-  
-  if(isLeader && !data.processName) {
-    processDiv.innerHTML = `
-      <strong>Choose a process:</strong><br>
-      <select id="processSelect" style="margin: 5px 0;">
+
+  // process selection
+  const processDiv=document.getElementById("processSelectionDiv");
+  if(isLeader && !data.processName){
+    processDiv.innerHTML=`<strong>Choose a process:</strong><br>
+      <select id="processSelect" style="margin:5px 0;">
         <option value="">-- Select Process --</option>
-        ${Object.keys(processes).map(k => `<option value="${k}">${k}</option>`).join('')}
+        ${Object.keys(processes).map(k=>`<option value="${k}">${k}</option>`).join('')}
       </select>
-      <button id="startBtn">▶️ Start</button>
-    `;
-    
-    document.getElementById("startBtn").addEventListener("click", async () => {
-      const selected = document.getElementById("processSelect").value;
-      if(!selected) {
-        alert("Please select a process first!");
-        return;
-      }
-      
-      const steps = processes[selected].map(text => {
-        const responses = {};
-        data.members.forEach(m => {
-          responses[m.name] = "";
-        });
-        return { text, responses };
+      <button id="startBtn">▶️ Start</button>`;
+    document.getElementById("startBtn").addEventListener("click", async ()=>{
+      const selected=document.getElementById("processSelect").value;
+      if(!selected){ alert("Select a process first!"); return; }
+      const steps=processes[selected].map(text=>{
+        const responses={}; data.members.forEach(m=>responses[m.name]="");
+        return {text,responses};
       });
-      
-      await setDoc(currentDocRef, {
-        ...data,
-        processName: selected,
-        steps: steps
-      });
+      await setDoc(currentDocRef,{...data,processName:selected,steps:steps});
     });
-  } else if(data.processName) {
-    processDiv.innerHTML = `<strong>Process:</strong> ${data.processName}`;
-    renderSteps(data);
-  } else {
-    processDiv.innerHTML = "⏳ Waiting for leader to select a process...";
-  }
+  } else if(data.processName){ processDiv.innerHTML=`<strong>Process:</strong> ${data.processName}`; renderSteps(data); }
+  else { processDiv.innerHTML="⏳ Waiting for leader to select a process..."; }
 }
 
-// RENDER STEPS
-function renderSteps(data) {
-  const stepsDiv = document.getElementById("processSteps");
-  stepsDiv.innerHTML = "";
-  
-  if(!data.steps || !Array.isArray(data.steps)) {
-    stepsDiv.innerHTML = '<p style="color:red; padding:20px; background:white; border-radius:8px;">❌ Data error. Click "Reset & Start Over".</p>';
-    return;
-  }
-  
-  data.steps.forEach((step, stepIdx) => {
-    const stepDiv = document.createElement("div");
-    stepDiv.className = "step";
-    
-    const titleDiv = document.createElement("div");
-    titleDiv.className = "step-title";
-    titleDiv.textContent = `${stepIdx + 1}. ${step.text}`;
+// ---------- RENDER STEPS ----------
+function renderSteps(data){
+  const stepsDiv=document.getElementById("processSteps"); stepsDiv.innerHTML="";
+  if(!data.steps||!Array.isArray(data.steps)){ stepsDiv.innerHTML='<p style="color:red;padding:20px;background:#333;border-radius:8px;">❌ Data error. Click "Reset & Start Over".</p>'; return; }
+
+  data.steps.forEach((step,stepIdx)=>{
+    const stepDiv=document.createElement("div"); stepDiv.className="step"; stepDiv.style.borderLeftColor=getStepColor(stepIdx);
+    const titleDiv=document.createElement("div"); titleDiv.className="step-title"; titleDiv.textContent=`${stepIdx+1}. ${step.text}`;
     stepDiv.appendChild(titleDiv);
-    
-    const responsesDiv = document.createElement("div");
-    responsesDiv.className = "responses";
-    
-    data.members.forEach(member => {
-      const box = document.createElement("div");
-      box.className = "response-box";
-      
-      const label = document.createElement("div");
-      label.className = "user-label";
-      label.style.backgroundColor = member.color;
-      label.textContent = member.name;
-      box.appendChild(label);
-      
-      const textarea = document.createElement("textarea");
-      textarea.value = step.responses[member.name] || "";
-      textarea.placeholder = member.name === username ? "Type here..." : "";
-      
-      if(member.name === username) {
-        textarea.style.border = `2px solid ${member.color}`;
-        textarea.style.backgroundColor = "#fff";
-        
-        // Save on blur (when user clicks away)
-        textarea.addEventListener("blur", async () => {
-          const newData = {...data};
-          newData.steps[stepIdx].responses[member.name] = textarea.value;
-          await setDoc(currentDocRef, newData);
+
+    const responsesDiv=document.createElement("div"); responsesDiv.className="responses";
+    data.members.forEach((member,i)=>{
+      const box=document.createElement("div"); box.className="response-box"; box.style.borderColor=getUserColor(i);
+      const label=document.createElement("div"); label.className="user-label"; label.textContent=member.name; box.appendChild(label);
+
+      const textarea=document.createElement("textarea");
+      textarea.value=step.responses[member.name]||"";
+      textarea.placeholder=member.name===username?"Type here...":"";
+      if(member.name===username){
+        textarea.addEventListener("blur", async ()=>{
+          const newData={...data}; newData.steps[stepIdx].responses[member.name]=textarea.value;
+          await setDoc(currentDocRef,newData);
         });
-      } else {
-        textarea.disabled = true;
-        textarea.style.backgroundColor = "#f5f5f5";
-      }
-      
-      box.appendChild(textarea);
-      responsesDiv.appendChild(box);
+      } else { textarea.disabled=true; }
+      box.appendChild(textarea); responsesDiv.appendChild(box);
     });
-    
-    stepDiv.appendChild(responsesDiv);
-    stepsDiv.appendChild(stepDiv);
+
+    stepDiv.appendChild(responsesDiv); stepsDiv.appendChild(stepDiv);
   });
 }
+
+// RESET
+document.getElementById("resetBtn").addEventListener("click", async ()=>{
+  if(!currentDocRef) return;
+  if(confirm("⚠️ Delete ALL group data and start fresh?")){
+    if(unsubscribe) unsubscribe();
+    await deleteDoc(currentDocRef); location.reload();
+  }
+});
 
 // EXPORT PDF
-document.getElementById("exportBtn").addEventListener("click", async () => {
+document.getElementById("exportBtn").addEventListener("click", async ()=>{
   if(!currentDocRef) return;
-  
-  const snap = await getDoc(currentDocRef);
-  if(!snap.exists()) {
-    alert("No data found!");
-    return;
-  }
-  
-  const data = snap.data();
-  
-  if(!data.processName || !data.steps || !Array.isArray(data.steps)) {
-    alert("No process started yet!");
-    return;
-  }
-  
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF();
-  let y = 20;
-  
-  pdf.setFontSize(18);
-  pdf.setFont(undefined, 'bold');
-  pdf.text(`Group ${groupNum} - ${data.processName}`, 20, y);
-  y += 15;
-  
-  data.steps.forEach((step, idx) => {
-    if(y > 260) {
-      pdf.addPage();
-      y = 20;
-    }
-    
-    pdf.setFontSize(14);
-    pdf.setFont(undefined, 'bold');
-    pdf.text(`${idx + 1}. ${step.text}`, 20, y);
-    y += 10;
-    
-    pdf.setFontSize(11);
-    pdf.setFont(undefined, 'normal');
-    
-    data.members.forEach(member => {
-      const response = step.responses[member.name];
-      if(response && response.trim()) {
-        const lines = pdf.splitTextToSize(`${member.name}: ${response}`, 170);
-        
-        if(y + lines.length * 6 > 280) {
-          pdf.addPage();
-          y = 20;
-        }
-        
-        pdf.text(lines, 25, y);
-        y += lines.length * 6 + 3;
+  const snap=await getDoc(currentDocRef);
+  if(!snap.exists()){ alert("No data found!"); return; }
+  const data=snap.data();
+  if(!data.processName||!data.steps||!Array.isArray(data.steps)){ alert("No process started yet!"); return; }
+  const { jsPDF }=window.jspdf; const pdf=new jsPDF(); let y=20;
+  pdf.setFontSize(18); pdf.setFont(undefined,'bold'); pdf.text(`Group ${groupNum} - ${data.processName}`,20,y); y+=15;
+  data.steps.forEach((step,idx)=>{
+    if(y>260){ pdf.addPage(); y=20; }
+    pdf.setFontSize(14); pdf.setFont(undefined,'bold'); pdf.text(`${idx+1}. ${step.text}`,20,y); y+=10;
+    pdf.setFontSize(11); pdf.setFont(undefined,'normal');
+    data.members.forEach(member=>{
+      const response=step.responses[member.name];
+      if(response && response.trim()){
+        const lines=pdf.splitTextToSize(`${member.name}: ${response}`,170);
+        if(y+lines.length*6>280){ pdf.addPage(); y=20; }
+        pdf.text(lines,25,y); y+=lines.length*6+3;
       }
     });
-    
-    y += 8;
+    y+=8;
   });
-  
   pdf.save(`Group${groupNum}_${data.processName}.pdf`);
 });
 </script>
