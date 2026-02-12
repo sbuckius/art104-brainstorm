@@ -9,24 +9,24 @@
 body { font-family: Arial; max-width: 1000px; margin:auto; padding:20px; background:#f5f5f5; }
 h1,h2 { color:#333; }
 input, select, button, textarea { font-size:1rem; padding:8px; margin:5px 0; }
-textarea { resize: vertical; min-height:50px; width: 100%; box-sizing: border-box; }
+textarea { resize: vertical; min-height:60px; width: 100%; box-sizing: border-box; }
 #groupPage { display:none; }
-.step { background:#fff; padding:15px; margin:10px 0; border-radius:8px; border-left:6px solid #4CAF50; }
-.responses { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
-.response-item { flex:1; min-width:200px; }
-.user-label { font-weight:bold; display:block; margin-bottom:3px; padding:3px 6px; border-radius:3px; color:white; }
-.typing { font-size:0.85rem; color:#555; font-style:italic; min-height:18px; }
-.avatar { display:inline-block; padding:5px 10px; margin:2px; border-radius:5px; color:white; font-weight:bold; }
-.leader { border:2px solid gold; }
-#resetBtn { background: #f44336; color: white; }
+.step { background:#fff; padding:15px; margin:15px 0; border-radius:8px; border-left:6px solid #4CAF50; }
+.step-title { font-weight: bold; font-size: 1.1em; margin-bottom: 10px; }
+.responses { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:15px; margin-top:10px; }
+.response-box { border: 2px solid #ddd; border-radius: 5px; padding: 10px; }
+.user-label { font-weight:bold; padding:5px; border-radius:3px; color:white; margin-bottom: 5px; }
+.avatar { display:inline-block; padding:8px 12px; margin:3px; border-radius:5px; color:white; font-weight:bold; }
+.leader { border:3px solid gold; }
+#resetBtn { background: #f44336; color: white; margin-left: 10px; }
 </style>
 </head>
 <body>
 
 <div id="lobbyPage">
-<h1>Brainstorm Lobby</h1>
+<h1>🧠 Brainstorm Lobby</h1>
 <p>Enter your avatar name:</p>
-<input type="text" id="avatarName" placeholder="Avatar Name">
+<input type="text" id="avatarName" placeholder="Your Name">
 <p>Select group (1–10):</p>
 <select id="groupSelect">
   <option value="">-- Choose a group --</option>
@@ -43,21 +43,20 @@ textarea { resize: vertical; min-height:50px; width: 100%; box-sizing: border-bo
 </select>
 <br><br>
 <button id="joinGroupBtn">Join Group</button>
-<div id="lobbyMessage"></div>
 </div>
 
 <div id="groupPage">
 <h1 id="groupTitle"></h1>
 <div id="avatars"></div>
-<div id="processSelectionDiv" style="margin:10px 0;"></div>
-<button id="exportBtn">Export PDF</button>
-<button id="resetBtn">Reset Group Data</button>
-<div id="processSteps"></div>
+<div id="processSelectionDiv" style="margin:15px 0;"></div>
+<button id="exportBtn">📄 Export PDF</button>
+<button id="resetBtn">🗑️ Reset & Start Over</button>
+<div id="processSteps" style="margin-top: 20px;"></div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBEn-_qOw_6k-v6qjHvSfthNJwvUwdzEI0",
@@ -71,21 +70,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const avatarNameInput = document.getElementById("avatarName");
-const groupSelect = document.getElementById("groupSelect");
-const joinGroupBtn = document.getElementById("joinGroupBtn");
-const lobbyPage = document.getElementById("lobbyPage");
-const groupPage = document.getElementById("groupPage");
-const groupTitle = document.getElementById("groupTitle");
-const avatarsDiv = document.getElementById("avatars");
-const processSelectionDiv = document.getElementById("processSelectionDiv");
-const processStepsDiv = document.getElementById("processSteps");
-const exportBtn = document.getElementById("exportBtn");
-const resetBtn = document.getElementById("resetBtn");
-
 const userColors = ["#FF6F61","#6B5B95","#88B04B","#F7CAC9"];
-let username="", groupNum="", currentDocRef=null, isLeader=false, currentProcessKey="";
-let stepsRendered = false; // Track if steps UI has been created
+let username = "";
+let groupNum = "";
+let currentDocRef = null;
+let isLeader = false;
+let unsubscribe = null;
 
 const processes = {
   prosCons: ["List sketches", "Discuss strengths", "Write pros/cons", "Decide strongest", "Refine top ideas"],
@@ -96,293 +86,252 @@ const processes = {
   collectiveConcept: ["Each user contributes a phrase", "Review contributions", "Discuss connections", "Write final combined sentence"]
 };
 
-resetBtn.addEventListener("click", async () => {
-  if(!currentDocRef) {
-    alert("No group to reset!");
+// JOIN GROUP
+document.getElementById("joinGroupBtn").addEventListener("click", async () => {
+  username = document.getElementById("avatarName").value.trim();
+  groupNum = document.getElementById("groupSelect").value;
+  
+  if(!username || !groupNum) {
+    alert("Please enter your name and select a group!");
     return;
   }
+
+  currentDocRef = doc(db, "groups", `group_${groupNum}`);
+  const snap = await getDoc(currentDocRef);
   
-  if(confirm("This will DELETE ALL DATA for this group and restart fresh. Are you sure?")) {
+  if(!snap.exists()) {
+    // Create new group
+    await setDoc(currentDocRef, {
+      members: [{name: username, color: userColors[0], leader: true}],
+      processName: "",
+      steps: []
+    });
+    isLeader = true;
+  } else {
+    // Join existing group
+    const data = snap.data();
+    const existingMember = data.members.find(m => m.name === username);
+    
+    if(existingMember) {
+      isLeader = existingMember.leader;
+    } else {
+      if(data.members.length >= 4) {
+        alert("Group is full (max 4 members)!");
+        return;
+      }
+      const newMembers = [...data.members, {
+        name: username,
+        color: userColors[data.members.length],
+        leader: false
+      }];
+      await setDoc(currentDocRef, {...data, members: newMembers});
+      isLeader = false;
+    }
+  }
+  
+  document.getElementById("lobbyPage").style.display = "none";
+  document.getElementById("groupPage").style.display = "block";
+  document.getElementById("groupTitle").textContent = `Group ${groupNum}`;
+  
+  startListening();
+});
+
+// RESET GROUP
+document.getElementById("resetBtn").addEventListener("click", async () => {
+  if(!currentDocRef) return;
+  
+  if(confirm("⚠️ Delete ALL group data and start fresh?")) {
+    if(unsubscribe) unsubscribe();
     await deleteDoc(currentDocRef);
-    alert("Group deleted! Refreshing page...");
     location.reload();
   }
 });
 
-joinGroupBtn.addEventListener("click", async () => {
-  username = avatarNameInput.value.trim();
-  groupNum = groupSelect.value;
-  if(!username||!groupNum){ alert("Enter avatar name and select a group."); return; }
-
-  const docId = `group_${groupNum}`;
-  currentDocRef = doc(db,"groups",docId);
-
-  const snap = await getDoc(currentDocRef);
-  if(!snap.exists()){
-    await setDoc(currentDocRef,{
-      members:[{name:username,color:userColors[0],leader:true}],
-      process:"",
-      steps:[],
-      lastUpdated:serverTimestamp()
-    });
-    isLeader = true;
-  } else {
-    const data = snap.data();
-    const members = data.members || [];
-    if(members.length>=4){ alert("Group full!"); return; }
-    
-    const existingIndex = members.findIndex(m => m.name === username);
-    if(existingIndex >= 0){
-      isLeader = members[existingIndex].leader;
-    } else {
-      const color = userColors[members.length];
-      await updateDoc(currentDocRef,{members:arrayUnion({name:username,color,leader:false})});
-      isLeader = false;
-    }
-  }
-
-  lobbyPage.style.display="none";
-  groupPage.style.display="block";
-  groupTitle.textContent = `Group ${groupNum}`;
-  setupGroupUI();
-});
-
-function setupGroupUI(){
-  onSnapshot(currentDocRef, snap=>{
+// LISTEN TO CHANGES
+function startListening() {
+  unsubscribe = onSnapshot(currentDocRef, (snap) => {
     if(!snap.exists()) return;
     
     const data = snap.data();
-
-    // Show avatars
-    avatarsDiv.innerHTML="";
-    data.members.forEach(m=>{
-      const span=document.createElement("span");
-      span.className="avatar";
-      if(m.leader) span.classList.add("leader");
-      span.style.backgroundColor=m.color;
-      span.textContent=m.name + (m.leader?" (Leader)":"");
-      avatarsDiv.appendChild(span);
-    });
-
-    // Leader selects process
-    if(isLeader && !data.process){
-      processSelectionDiv.innerHTML='<select id="processSelectLeader"><option value="">-- Choose a process --</option></select><button id="startProcessBtn">Start Process</button>';
-      const select=document.getElementById("processSelectLeader");
-      Object.keys(processes).forEach(k=>{
-        const opt=document.createElement("option");
-        opt.value=k; opt.textContent=k;
-        select.appendChild(opt);
-      });
-      
-      document.getElementById("startProcessBtn").addEventListener("click", async ()=>{
-        const selectedProcess = select.value;
-        if(!selectedProcess) { alert("Select a process first!"); return; }
-        currentProcessKey = selectedProcess;
-        
-        const stepData = processes[currentProcessKey].map(text=>{
-          const responses = {};
-          const typing = {};
-          data.members.forEach((m) => {
-            responses[m.name] = "";
-            typing[m.name] = "";
-          });
-          return {text, responses, typing};
-        });
-        
-        await setDoc(currentDocRef, {
-          members: data.members,
-          process: currentProcessKey,
-          steps: stepData,
-          lastUpdated: serverTimestamp()
-        });
-        
-        stepsRendered = false; // Allow re-render with new process
-      });
-    } else if(data.process){
-      processSelectionDiv.innerHTML = `<b>Process:</b> ${data.process}`;
-      currentProcessKey = data.process;
-    } else {
-      processSelectionDiv.innerHTML = "Waiting for leader to select process...";
-    }
-
-    // Validate and render/update steps
-    if(data.process && data.steps && Array.isArray(data.steps) && data.steps.length > 0){
-      if(!stepsRendered) {
-        // First time: create the UI
-        renderSteps(data.steps, data.members);
-        stepsRendered = true;
-      } else {
-        // Subsequent times: just update values without re-rendering
-        updateStepValues(data.steps, data.members);
-      }
-    } else if(data.process && (!data.steps || !Array.isArray(data.steps))) {
-      processStepsDiv.innerHTML = '<p style="color:red; font-size:1.2em; padding:20px; background:white; border-radius:8px;">ERROR: Data corrupted. Click "Reset Group Data" button above to fix.</p>';
-      stepsRendered = false;
-    }
+    updateUI(data);
   });
 }
 
-function renderSteps(steps, members){
-  processStepsDiv.innerHTML="";
+// UPDATE UI
+function updateUI(data) {
+  // Show members
+  const avatarsDiv = document.getElementById("avatars");
+  avatarsDiv.innerHTML = "";
+  data.members.forEach(m => {
+    const span = document.createElement("span");
+    span.className = "avatar";
+    if(m.leader) span.classList.add("leader");
+    span.style.backgroundColor = m.color;
+    span.textContent = m.name + (m.leader ? " 👑" : "");
+    avatarsDiv.appendChild(span);
+  });
   
-  steps.forEach((step,stepIndex)=>{
-    const div=document.createElement("div");
-    div.className="step";
-    const title=document.createElement("div");
-    title.innerHTML = `<strong>${step.text}</strong>`;
-    div.appendChild(title);
-
-    const responsesDiv=document.createElement("div");
-    responsesDiv.className="responses";
-
-    members.forEach((member)=>{
-      const respDiv=document.createElement("div");
-      respDiv.className="response-item";
-      
-      const label=document.createElement("div");
-      label.className="user-label"; 
-      label.textContent=member.name;
-      label.style.backgroundColor=member.color;
-
-      const ta=document.createElement("textarea");
-      ta.id = `step${stepIndex}_${member.name}`;
-      ta.value = step.responses[member.name] || "";
-      ta.disabled = (member.name !== username);
-      
-      if(member.name === username){
-        ta.style.backgroundColor = "#fff";
-        ta.style.border = `2px solid ${member.color}`;
-      } else {
-        ta.style.backgroundColor = "#f0f0f0";
+  // Process selection (leader only)
+  const processDiv = document.getElementById("processSelectionDiv");
+  
+  if(isLeader && !data.processName) {
+    processDiv.innerHTML = `
+      <strong>Choose a process:</strong><br>
+      <select id="processSelect" style="margin: 5px 0;">
+        <option value="">-- Select Process --</option>
+        ${Object.keys(processes).map(k => `<option value="${k}">${k}</option>`).join('')}
+      </select>
+      <button id="startBtn">▶️ Start</button>
+    `;
+    
+    document.getElementById("startBtn").addEventListener("click", async () => {
+      const selected = document.getElementById("processSelect").value;
+      if(!selected) {
+        alert("Please select a process first!");
+        return;
       }
-
-      let typingTimeout;
-      ta.addEventListener("input", async ()=>{
-        const updatedResponses = {...step.responses};
-        updatedResponses[username] = ta.value;
-        const updatedTyping = {...step.typing};
-        updatedTyping[username] = username;
-        
-        try {
-          await updateDoc(currentDocRef,{
-            [`steps.${stepIndex}.responses`]: updatedResponses,
-            [`steps.${stepIndex}.typing`]: updatedTyping,
-            lastUpdated: serverTimestamp()
-          });
-        } catch(err) {
-          console.error("Update error:", err);
-        }
-        
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(async ()=>{
-          const clearTyping = {...step.typing};
-          clearTyping[username] = "";
-          await updateDoc(currentDocRef,{[`steps.${stepIndex}.typing`]: clearTyping});
-        }, 1000);
+      
+      const steps = processes[selected].map(text => {
+        const responses = {};
+        data.members.forEach(m => {
+          responses[m.name] = "";
+        });
+        return { text, responses };
       });
-
-      const typingSpan=document.createElement("div");
-      typingSpan.className="typing";
-      typingSpan.id = `typing${stepIndex}_${member.name}`;
-      const typingUser = step.typing[member.name];
-      typingSpan.textContent = (typingUser && typingUser !== "" && member.name !== username) ? `✏️ Typing...` : "";
-
-      respDiv.appendChild(label);
-      respDiv.appendChild(ta);
-      respDiv.appendChild(typingSpan);
-      responsesDiv.appendChild(respDiv);
+      
+      await setDoc(currentDocRef, {
+        ...data,
+        processName: selected,
+        steps: steps
+      });
     });
-
-    div.appendChild(responsesDiv);
-    processStepsDiv.appendChild(div);
-  });
+  } else if(data.processName) {
+    processDiv.innerHTML = `<strong>Process:</strong> ${data.processName}`;
+    renderSteps(data);
+  } else {
+    processDiv.innerHTML = "⏳ Waiting for leader to select a process...";
+  }
 }
 
-// Update values WITHOUT re-rendering
-function updateStepValues(steps, members){
-  steps.forEach((step, stepIndex) => {
-    members.forEach(member => {
-      const ta = document.getElementById(`step${stepIndex}_${member.name}`);
-      const typingSpan = document.getElementById(`typing${stepIndex}_${member.name}`);
-      
-      if(ta && member.name !== username){
-        // Only update OTHER users' textareas (not your own to prevent cursor jump)
-        ta.value = step.responses[member.name] || "";
-      }
-      
-      if(typingSpan){
-        const typingUser = step.typing[member.name];
-        typingSpan.textContent = (typingUser && typingUser !== "" && member.name !== username) ? `✏️ Typing...` : "";
-      }
-    });
-  });
-}
-
-exportBtn.addEventListener("click", async ()=>{
-  if(!currentDocRef) {
-    alert("Group not started.");
+// RENDER STEPS
+function renderSteps(data) {
+  const stepsDiv = document.getElementById("processSteps");
+  stepsDiv.innerHTML = "";
+  
+  if(!data.steps || !Array.isArray(data.steps)) {
+    stepsDiv.innerHTML = '<p style="color:red; padding:20px; background:white; border-radius:8px;">❌ Data error. Click "Reset & Start Over".</p>';
     return;
   }
   
+  data.steps.forEach((step, stepIdx) => {
+    const stepDiv = document.createElement("div");
+    stepDiv.className = "step";
+    
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "step-title";
+    titleDiv.textContent = `${stepIdx + 1}. ${step.text}`;
+    stepDiv.appendChild(titleDiv);
+    
+    const responsesDiv = document.createElement("div");
+    responsesDiv.className = "responses";
+    
+    data.members.forEach(member => {
+      const box = document.createElement("div");
+      box.className = "response-box";
+      
+      const label = document.createElement("div");
+      label.className = "user-label";
+      label.style.backgroundColor = member.color;
+      label.textContent = member.name;
+      box.appendChild(label);
+      
+      const textarea = document.createElement("textarea");
+      textarea.value = step.responses[member.name] || "";
+      textarea.placeholder = member.name === username ? "Type here..." : "";
+      
+      if(member.name === username) {
+        textarea.style.border = `2px solid ${member.color}`;
+        textarea.style.backgroundColor = "#fff";
+        
+        // Save on blur (when user clicks away)
+        textarea.addEventListener("blur", async () => {
+          const newData = {...data};
+          newData.steps[stepIdx].responses[member.name] = textarea.value;
+          await setDoc(currentDocRef, newData);
+        });
+      } else {
+        textarea.disabled = true;
+        textarea.style.backgroundColor = "#f5f5f5";
+      }
+      
+      box.appendChild(textarea);
+      responsesDiv.appendChild(box);
+    });
+    
+    stepDiv.appendChild(responsesDiv);
+    stepsDiv.appendChild(stepDiv);
+  });
+}
+
+// EXPORT PDF
+document.getElementById("exportBtn").addEventListener("click", async () => {
+  if(!currentDocRef) return;
+  
   const snap = await getDoc(currentDocRef);
-  if(!snap.exists()) { 
+  if(!snap.exists()) {
     alert("No data found!");
     return;
   }
   
   const data = snap.data();
   
-  if(!data.process || !data.steps || !Array.isArray(data.steps)) {
-    alert("ERROR: Data is corrupted or no process started. Click 'Reset Group Data' to fix.");
-    return;
-  }
-  
-  if(!window.jspdf) {
-    alert("PDF library not loaded!");
+  if(!data.processName || !data.steps || !Array.isArray(data.steps)) {
+    alert("No process started yet!");
     return;
   }
   
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF();
-  let y=20;
+  let y = 20;
   
-  pdf.setFontSize(16); 
+  pdf.setFontSize(18);
   pdf.setFont(undefined, 'bold');
-  pdf.text(`Group ${groupNum}`,20,y); 
-  y+=10;
+  pdf.text(`Group ${groupNum} - ${data.processName}`, 20, y);
+  y += 15;
   
-  pdf.setFontSize(12); 
-  pdf.text(`Process: ${data.process}`,20,y); 
-  y+=15;
-
-  data.steps.forEach((step)=>{
-    if(y > 270) { pdf.addPage(); y = 20; }
+  data.steps.forEach((step, idx) => {
+    if(y > 260) {
+      pdf.addPage();
+      y = 20;
+    }
     
-    pdf.setFontSize(12);
-    pdf.setFont(undefined,"bold"); 
-    pdf.text(step.text, 20, y); 
-    y+=8;
+    pdf.setFontSize(14);
+    pdf.setFont(undefined, 'bold');
+    pdf.text(`${idx + 1}. ${step.text}`, 20, y);
+    y += 10;
     
-    pdf.setFontSize(10);
-    pdf.setFont(undefined,"normal");
+    pdf.setFontSize(11);
+    pdf.setFont(undefined, 'normal');
     
-    data.members.forEach(member=>{
+    data.members.forEach(member => {
       const response = step.responses[member.name];
-      if(response && response.trim()){
+      if(response && response.trim()) {
         const lines = pdf.splitTextToSize(`${member.name}: ${response}`, 170);
         
-        if(y + (lines.length * 6) > 280) { pdf.addPage(); y = 20; }
+        if(y + lines.length * 6 > 280) {
+          pdf.addPage();
+          y = 20;
+        }
         
         pdf.text(lines, 25, y);
-        y += lines.length * 6 + 2;
+        y += lines.length * 6 + 3;
       }
     });
     
-    y += 5;
+    y += 8;
   });
-
-  pdf.save(`Group${groupNum}_${data.process}.pdf`);
-  alert("PDF exported successfully!");
+  
+  pdf.save(`Group${groupNum}_${data.processName}.pdf`);
 });
 </script>
 </body>
